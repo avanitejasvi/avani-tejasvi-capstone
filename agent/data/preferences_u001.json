@@ -1,0 +1,168 @@
+{
+  "user_id": "u001",
+  "dietary_restrictions": [
+    "non-vegetarian"
+  ],
+  "skip_meal_slots": [
+    "breakfast"
+  ],
+  "known_dishes": [
+    {
+      "name": "Curd Rice",
+      "tags": [
+        "curd-based",
+        "rice",
+        "light"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-01"
+    },
+    {
+      "name": "Rajma Chawal",
+      "tags": [
+        "rice",
+        "dal",
+        "gravy",
+        "rice-bowl"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-01"
+    },
+    {
+      "name": "Kheer",
+      "tags": [
+        "dessert"
+      ],
+      "rating": 2,
+      "last_seen": "2026-09-02"
+    },
+    {
+      "name": "Thai Basil Fusion Rice",
+      "tags": [
+        "fusion",
+        "rice-bowl"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-10"
+    },
+    {
+      "name": "Veg Manchurian Rice Bowl",
+      "tags": [
+        "rice-bowl",
+        "fusion",
+        "spicy"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Moong Dal Halwa",
+      "tags": [
+        "sweet"
+      ],
+      "rating": 2,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Paneer Mutter",
+      "tags": [
+        "gravy",
+        "veg",
+        "jain"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Paneer Mutter",
+      "tags": [
+        "gravy",
+        "veg",
+        "jain"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Dal Adraki",
+      "tags": [
+        "dal"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Jeera Rice",
+      "tags": [
+        "rice"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Pav Bhaji",
+      "tags": [
+        "dry",
+        "veg",
+        "jain"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Boondi Raita",
+      "tags": [
+        "gravy",
+        "veg",
+        "jain"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Pav Bhaji",
+      "tags": [
+        "dry",
+        "veg",
+        "jain"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Boondi Raita",
+      "tags": [
+        "gravy",
+        "veg",
+        "jain"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Masala Bhat",
+      "tags": [
+        "rice"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Mirchi Salan",
+      "tags": [
+        "dal"
+      ],
+      "rating": 5,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Motichur Ladoo",
+      "tags": [
+        "sweet"
+      ],
+      "rating": 2,
+      "last_seen": "2026-09-17"
+    }
+  ],
+  "tag_weights": {}
+}
