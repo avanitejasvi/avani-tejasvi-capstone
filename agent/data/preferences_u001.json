@@ -1,168 +1,81 @@
 {
+  "comment": "known_dishes is checked by EXACT NAME first (handles cases like liking puri but hating jalebi, both fried; or liking chana/rajma/khichdi but finding generic dal 'eh'; or liking chole but hating manchurian, both gravy dishes). tag_weights is the fallback used only for dishes not yet in known_dishes, recomputed from known_dishes each run - don't hand-maintain it. skip_meal_slots is a behavior rule, not a taste preference - handle it before scoring even runs. NOTE: 'dal' lands at 4.5 (high) despite a generic 'eh' entry, because three named dal dishes (Chana, Rajma, Khichdi) are liked and outweigh the one neutral point - expected tag-averaging behavior, not an error, but means a brand-new unnamed dal dish is guessed as probably-good. Similarly, 'gravy' dropped to 3.0 (neutral) because Manchurian (disliked, gravy-based) pulls against Chole (liked, gravy-based) - a new unnamed gravy dish now gets a neutral guess rather than an optimistic one. 'fried' sits at 2.83 (leaning negative) for the same reason - Puri/Gulab Jamun/Samosa liked, but Jalebi/Hakka Noodles/Manchurian disliked.",
   "user_id": "u001",
-  "dietary_restrictions": [
-    "non-vegetarian"
-  ],
-  "skip_meal_slots": [
-    "breakfast"
-  ],
+  "dietary_restrictions": [],
+  "skip_meal_slots": [],
   "known_dishes": [
-    {
-      "name": "Curd Rice",
-      "tags": [
-        "curd-based",
-        "rice",
-        "light"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-01"
-    },
-    {
-      "name": "Rajma Chawal",
-      "tags": [
-        "rice",
-        "dal",
-        "gravy",
-        "rice-bowl"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-01"
-    },
-    {
-      "name": "Kheer",
-      "tags": [
-        "dessert"
-      ],
-      "rating": 2,
-      "last_seen": "2026-09-02"
-    },
-    {
-      "name": "Thai Basil Fusion Rice",
-      "tags": [
-        "fusion",
-        "rice-bowl"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-10"
-    },
-    {
-      "name": "Veg Manchurian Rice Bowl",
-      "tags": [
-        "rice-bowl",
-        "fusion",
-        "spicy"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-15"
-    },
-    {
-      "name": "Moong Dal Halwa",
-      "tags": [
-        "sweet"
-      ],
-      "rating": 2,
-      "last_seen": "2026-09-15"
-    },
-    {
-      "name": "Paneer Mutter",
-      "tags": [
-        "gravy",
-        "veg",
-        "jain"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-15"
-    },
-    {
-      "name": "Paneer Mutter",
-      "tags": [
-        "gravy",
-        "veg",
-        "jain"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-15"
-    },
-    {
-      "name": "Dal Adraki",
-      "tags": [
-        "dal"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-15"
-    },
-    {
-      "name": "Jeera Rice",
-      "tags": [
-        "rice"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-15"
-    },
-    {
-      "name": "Pav Bhaji",
-      "tags": [
-        "dry",
-        "veg",
-        "jain"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-17"
-    },
-    {
-      "name": "Boondi Raita",
-      "tags": [
-        "gravy",
-        "veg",
-        "jain"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-17"
-    },
-    {
-      "name": "Pav Bhaji",
-      "tags": [
-        "dry",
-        "veg",
-        "jain"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-17"
-    },
-    {
-      "name": "Boondi Raita",
-      "tags": [
-        "gravy",
-        "veg",
-        "jain"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-17"
-    },
-    {
-      "name": "Masala Bhat",
-      "tags": [
-        "rice"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-17"
-    },
-    {
-      "name": "Mirchi Salan",
-      "tags": [
-        "dal"
-      ],
-      "rating": 5,
-      "last_seen": "2026-09-17"
-    },
-    {
-      "name": "Motichur Ladoo",
-      "tags": [
-        "sweet"
-      ],
-      "rating": 2,
-      "last_seen": "2026-09-17"
-    }
+    {"name": "Fruits (general)", "tags": ["fruit"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Banana", "tags": ["fruit"], "rating": 2, "last_seen": "2026-09-18"},
+    {"name": "Bread", "tags": ["bread"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Aloo Bhaji", "tags": ["potato", "breakfast", "bhaji"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Puri", "tags": ["fried", "breakfast"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Upma", "tags": ["breakfast", "semolina"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Sabudana Khichdi", "tags": ["breakfast", "tapioca"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Mousse", "tags": ["dessert", "creamy"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Slice Cake", "tags": ["dessert", "cake"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Jalebi", "tags": ["dessert", "fried", "sweet"], "rating": 1, "last_seen": "2026-09-18"},
+    {"name": "Custard", "tags": ["dessert", "milk-based"], "rating": 1, "last_seen": "2026-09-18"},
+    {"name": "Payasam", "tags": ["dessert", "milk-based"], "rating": 1, "last_seen": "2026-09-18"},
+    {"name": "Milk", "tags": ["milk-based"], "rating": 1, "last_seen": "2026-09-18"},
+    {"name": "Poha", "tags": ["breakfast", "rice-flakes", "light"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Chana", "tags": ["dal", "legume"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Curd", "tags": ["dairy", "light"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Rice", "tags": ["rice", "light"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Dal (general)", "tags": ["dal"], "rating": 3, "last_seen": "2026-09-18"},
+    {"name": "Rajma", "tags": ["dal", "legume"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Carrot", "tags": ["vegetable"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Cucumber", "tags": ["vegetable"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Onion", "tags": ["vegetable"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Gulab Jamun", "tags": ["dessert", "fried", "sweet"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Lemon Juice", "tags": ["beverage", "citrus"], "rating": 4, "last_seen": "2026-09-18"},
+    {"name": "Khichdi", "tags": ["rice", "dal", "comfort"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Paneer (general)", "tags": ["paneer"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Chole", "tags": ["legume", "chickpea", "gravy"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Samosa", "tags": ["fried", "snack"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Chaat", "tags": ["snack", "tangy", "street-food"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Hakka Noodles", "tags": ["noodles", "chinese", "fried"], "rating": 1, "last_seen": "2026-09-18"},
+    {"name": "Manchurian (general)", "tags": ["chinese", "fried", "gravy"], "rating": 1, "last_seen": "2026-09-18"},
+    {"name": "Tang (drink)", "tags": ["beverage", "powdered-drink"], "rating": 2, "last_seen": "2026-09-18"},
+    {"name": "Pav", "tags": ["bread", "bun"], "rating": 5, "last_seen": "2026-09-18"},
+    {"name": "Soup (general)", "tags": ["soup"], "rating": 2, "last_seen": "2026-09-18"},
+    {"name": "Rasam", "tags": ["soup", "tangy", "south-indian"], "rating": 5, "last_seen": "2026-09-18"}
   ],
-  "tag_weights": {}
+  "tag_weights_note": "Recompute this from known_dishes each run - don't hand-maintain it. Shown here as a reference for what the derivation should produce. Verified computationally against known_dishes above.",
+  "tag_weights": {
+    "beverage": 3.0,
+    "bhaji": 5.0,
+    "bread": 4.5,
+    "breakfast": 4.6,
+    "bun": 5.0,
+    "cake": 5.0,
+    "chickpea": 5.0,
+    "chinese": 1.0,
+    "citrus": 4.0,
+    "comfort": 5.0,
+    "creamy": 5.0,
+    "dairy": 5.0,
+    "dal": 4.5,
+    "dessert": 3.0,
+    "fried": 2.83,
+    "fruit": 3.0,
+    "gravy": 3.0,
+    "legume": 5.0,
+    "light": 5.0,
+    "milk-based": 1.0,
+    "noodles": 1.0,
+    "paneer": 5.0,
+    "potato": 5.0,
+    "powdered-drink": 2.0,
+    "rice": 5.0,
+    "rice-flakes": 5.0,
+    "semolina": 4.0,
+    "snack": 5.0,
+    "soup": 3.5,
+    "south-indian": 5.0,
+    "street-food": 5.0,
+    "sweet": 3.0,
+    "tangy": 5.0,
+    "tapioca": 5.0,
+    "vegetable": 4.0
+  }
 }

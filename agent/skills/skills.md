@@ -1,114 +1,192 @@
-# SKILL.md — Menu Preference Matching (Calendar Interface)
+# SKILL.md — Meal Recommendation Agent (Build Version)
 
 ## Overview
 
-This skill answers one question, automatically, without the student opening an app: *"Should I eat this meal?"* Instead of a custom screen, the interface **is Google Calendar** — the skill creates a calendar invite for each upcoming meal, with a description listing which menu items match the student's taste, and the student responds by accepting or declining the invite directly in Calendar.
+This Skill manages a student's daily mess meal recommendation and scheduling, end to end. It's one Skill — Google Drive, Google Calendar, and the Gemini API are tools/actions it uses internally, not separate skills.
 
-## Interface: Google Drive + Google Calendar
+**Design direction per professor feedback:** menu intake uses the **Gemini API reading menu images**, not a structured Sheet. Combined with the two strongest pieces from earlier design passes: **tag-based fallback scoring** for genuinely new dishes (instead of leaving them a blank slate), and the richer **YES/NO/MAYBE + note feedback loop** with **calendar-conflict resolution**.
 
-This skill has **Google Drive access**. The menu lives in a real Google Sheet, not a local file:
+One-line summary: **each morning, Gemini reads a photographed menu image and extracts + stores the day's dishes → match each dish against preferences (exact match, or tag-based estimate for new dishes) → check the student's Calendar against mess timings, resolving conflicts with an alternate slot if needed → schedule the meal and invite the student → student responds YES/NO/MAYBE + optional note → Gemini interprets the response and updates that specific item's preference data → repeat the next day.**
 
-- A Google Drive folder/file titled **"meal-menu-match"** contains the Google Sheet with the menu data.
-- The skill reads this sheet directly (via Drive access) to get each day's menu items — no manual CSV upload, no re-typing the menu by hand.
-- For each dish on the sheet, the skill cross-references it against the user's preferences (exact-name match first, `tag_weights` fallback for new dishes — see Workflow below).
-- Once the matching is done, the skill goes to **Google Calendar** and creates an event for that meal, with the results written into the event's description.
+## Interface: Gemini API + Google Drive + Google Calendar
 
-So the full chain is: **Drive (read menu) → match against preferences → Calendar (create event with results in description) → wait for accept/decline.**
+- **Menu source:** a photographed/scanned image of the day's mess menu, stored in a Google Drive folder. The **Gemini API reads the image** each morning and extracts dishes, tagged with which mess (**Rasoi** or **Aahar**), which meal, and which menu category (e.g. "Dal," "Gravy Veg - Jain") they were listed under — see `mess_structure.json` for the exact category labels per mess per meal, since **Rasoi and Aahar have genuinely different menu structures** (Rasoi is rice-bowl style, Aahar is full buffet style).
+- **Extracted data must be stored**, not just used transiently — write the extracted dish list to a persistent `MenuIntake` record for that date immediately after extraction, before any matching happens.
+- **Calendar:** Google Calendar, checked for existing events during each meal window before scheduling, and used to create the meal event with match results in the description.
+
+## OCR Reliability Safeguard
+
+Reading a real photographed menu is inherently less reliable than a structured data source — extracted dish names can come back slightly different each time (e.g. "Paneer Tikka" vs "Paneer Tkka" vs "paneer tikka"). Since the matching logic depends on **exact name match** against `known_dishes`, an unhandled misread would silently create a duplicate "new" item instead of matching existing preference history.
+
+**Mitigation:** before treating an extracted item as brand-new, run a simple fuzzy/normalized comparison (lowercase, strip whitespace, and a basic string-similarity check) against existing `known_dishes` names. If a close match exists above a similarity threshold, treat it as the same dish rather than creating a duplicate. This is a small, buildable safeguard — not a full OCR-correction system — that keeps the known-dish matching from silently degrading over time.
 
 ## Data Sources
 
-Two persistent stores:
+1. **Menu Images** — stored in Drive, read via the Gemini API each morning.
+2. **Menu Intake Records** — the extracted-and-stored result of that read, one per day, kept even after matching runs (see Data Model).
+3. **Preferences File** (`preferences_u001.json`):
+   - `dietary_restrictions` — hard excludes, checked first.
+   - `skip_meal_slots` — a behavior rule, handled before scoring runs.
+   - `known_dishes` — every dish rated by exact (normalized) name, with tags, a running score, and times eaten.
+   - `tag_weights` — derived, recomputed from `known_dishes` each run: the average rating across every known dish carrying a given tag. Used as the fallback estimate for dishes not yet in `known_dishes`.
+4. **Mess Timings** — fixed meal-slot windows (breakfast/lunch/dinner), used for both matching context and conflict-checking.
 
-1. **Menu Sheet** — a Google Sheet inside the "meal-menu-match" Drive file/folder, containing the running menu (ideally one row per dish per day, with columns for name, tags, and date — matching the `MenuArchiveItem` shape below). Read via Drive access each time the skill runs — always pulling the current sheet, not a cached copy.
-2. **Preferences File** (`preferences_u001.json`) — one file per user, containing three distinct things that must NOT be blended together:
-   - `dietary_restrictions` — hard excludes, checked before anything else.
-   - `skip_meal_slots` — a **behavior rule**, not a taste input (e.g. `["breakfast"]` means never /evaluate breakfast at all — this is handled before scoring runs, not as part of it).
-   - `known_dishes` — every dish the user has actually eaten/rated before, by exact name, with its own tags and a 1-5 rating.
-   - `tag_weights` — a **derived, not hand-maintained** fallback table, recomputed from `known_dishes` every run: for each tag, the average rating across every known dish carrying that tag. Used only when a dish isn't in `known_dishes` yet.
+## Workflow
 
-## Workflow (per meal)
+### 1. Morning menu intake
 
-1. **Check `skip_meal_slots` first.** If today's meal slot (e.g. "breakfast") is in this list, skip the entire meal — no scoring, no event, no invite. This is a behavior rule, evaluated before any preference logic runs.
-2. **Read today's menu items** for that slot from the Menu Sheet, via Google Drive access to the "meal-menu-match" file.
-3. **For each item, check `dietary_restrictions`** — if it violates a hard restriction, exclude it immediately, no further scoring.
-4. **Check `known_dishes` by exact name.**
-   - **Exact match found** → use that dish's stored `rating` directly. This is what makes "I like this one specific dessert but not desserts generally" work correctly — exact-name lookup always wins over the tag-based fallback.
-   - **No exact match (new dish)** → fall back to `tag_weights`: average the weight of each of the dish's tags to estimate a score. If the dish has a tag that's never appeared in `known_dishes` before (no weight exists for it), that specific tag contributes no signal — average only the tags that do have weights, and treat a dish with zero recognized tags as genuinely unrated (see note below).
-   - Either way, if this is a brand-new dish, add it to `known_dishes` with the tag-estimated score, so `tag_weights` self-improves the next time it's recomputed.
-5. **Build the event description** — list which of today's menu items scored above the eat threshold (e.g. 3+), separating "known favorites" (exact match) from "new, estimated" (tag-weight fallback) so the description is honest about which is a guess.
-6. **Create the calendar invite** for that meal, with the description from step 5.
-7. **Wait for the student's response:** Accept ("yes") → event stays. Decline ("no") → delete the event (per your original spec — see Open Questions for the tradeoff).
+- Each morning, the agent retrieves the day's menu image from Drive.
+- The Gemini API reads the image and extracts the list of dishes.
+- The extracted list is stored as a `MenuIntake` record for that date, before anything else happens.
 
-## Data Models
+### 2. Normalize and check behavior rules
+
+- If today's meal slot is in `skip_meal_slots`, skip the entire meal — no scoring, no event.
+- For remaining slots, normalize each extracted dish name (per the OCR Reliability Safeguard above) and exclude anything violating `dietary_restrictions`.
+
+### 3. Match menu against preferences
+
+For each remaining dish:
+- **Exact (normalized) match in `known_dishes`** → use its stored, running score directly.
+- **No match — genuinely new dish** → estimate from `tag_weights`: average the weight of each of its tags. If none of its tags have a recorded weight yet, there's no signal to average — flag it distinctly as "new, no data yet" rather than guessing a neutral score.
+- New dishes get added to `known_dishes` with their estimated score, so `tag_weights` self-improves on the next run.
+
+### 4. Check calendar conflicts and schedule
+
+- Identify the student's top-scoring meal options from step 3.
+- Check the student's Google Calendar for an existing event during that meal's mess timing window.
+- **No conflict** → create the event at the normal mess timing, add the student as invitee.
+- **Conflict found** → look for another suitable time within the mess's available slot; schedule there instead if one exists.
+- **No alternate slot available either** → flag for the student rather than silently failing (see Open Questions).
+
+### 5. Calendar event
+
+Kept short and useful. Example:
+
+> **Today's mess picks:** Paneer Tikka, Dal Makhani
+> Based on your preferences.
+
+Includes the selected meal(s) and the relevant mess timing.
+
+### 6. User feedback
+
+The student responds to the event with:
+- **YES** — I'll eat this
+- **NO** — I won't eat this
+- **MAYBE** — I'm unsure
+- **Note** (optional) — free text, e.g. "too spicy," "really liked it"
+
+Gemini interprets the response and note, and updates the preference data for the **specific food item**:
+- YES → score increases
+- YES + positive note → score increases more
+- NO → score decreases
+- NO + note (e.g. "too spicy") → score decreases; the note can also inform tag-level signal over time
+- MAYBE + note → slight/neutral adjustment
+
+`times_eaten` is tracked alongside score as a **confidence** signal, not a stand-in for sentiment — a single lukewarm response after one meal is genuinely uncertain, not automatically disliked.
+
+## Data Model
 
 ```python
+class ExtractedDish(BaseModel):
+    name: str
+    mess: str                        # "Rasoi" | "Aahar"
+    meal_slot: str                    # "breakfast" | "lunch" | "evening_snacks" | "dinner" | "sunday_brunch"
+    category: str                      # e.g. "Dal", "Gravy Veg - Jain", "Dessert" - the menu section it was listed under
+
+class MenuIntake(BaseModel):
+    date: date
+    source_image_id: str            # Drive file id for the scanned menu image
+    extracted_items: list[ExtractedDish]   # structured extraction, not just raw names
+    processed: bool                   # true once matching has run against this record
+
 class KnownDish(BaseModel):
-    name: str                    # exact-match key
+    name: str                         # normalized exact-match key
     tags: list[str]
-    rating: int                  # 1-5
+    score: float                       # running score, adjusted by feedback over time
+    times_eaten: int                    # confidence signal, separate from score
+    last_response: str | None           # "yes" | "no" | "maybe" | None
+    last_note: str | None
     last_seen: date
 
 class UserPreferences(BaseModel):
     user_id: str
     dietary_restrictions: list[str]
-    skip_meal_slots: list[str]         # e.g. ["breakfast"] - behavior rule, not taste
+    skip_meal_slots: list[str]
     known_dishes: list[KnownDish]
-    tag_weights: dict[str, float]      # derived - recompute from known_dishes each run, don't hand-edit
+    tag_weights: dict[str, float]        # derived - recompute from known_dishes each run
 
-class MenuArchiveItem(BaseModel):
-    id: str
-    name: str
-    tags: list[str]
-    first_seen_date: date
+class MessTiming(BaseModel):
+    meal_slot: str                        # "breakfast" | "lunch" | "dinner"
+    start_time: time
+    end_time: time
 
 class ScoredDish(BaseModel):
     name: str
     score: float
-    source: str                  # "known_dish" (exact match) | "tag_weight_estimate" (new dish)
-    decision: str                # "eat" | "skip"
+    source: str                            # "known_dish" | "tag_weight_estimate" | "no_data"
+    decision: str                           # "eat" | "skip"
 
-class MealEvent(BaseModel):
+class ScheduledMeal(BaseModel):
+    date: date
     meal_slot: str
-    event_date: date
-    scored_items: list[ScoredDish]
+    selected_items: list[str]
     calendar_event_id: str | None
-    response: str | None         # "yes" | "no" | None (pending)
+    scheduled_time: time                    # may differ from default mess_timing if conflict resolved
+    conflict_resolved: bool
+
+class MealResponse(BaseModel):
+    calendar_event_id: str
+    response: str                            # "yes" | "no" | "maybe"
+    note: str | None
+    processed: bool                           # true once known_dishes has been updated from this response
 ```
 
-## Open Questions — what your design already resolves, and what's still open
+## Open Questions — decide before building
 
-Your `preferences_u001.json` design already answers two of the three original open questions well:
+1. **Fuzzy-match similarity threshold.** How close does an extracted name need to be to an existing `known_dishes` entry to count as the same dish (vs. a genuinely new one)? Needs a concrete threshold (e.g. edit-distance cutoff), not left as "close enough."
+2. **Exact score-adjustment sizes.** Define the actual increments (e.g. YES = +1, YES + positive note = +2) before coding rather than inventing them ad hoc inside the function.
+3. **Repeated-conflict fallback.** If step 4's alternate-slot check also finds everything taken, what happens — schedule anyway with a warning, skip the day, or notify the student to resolve manually?
+4. **Dish with zero recognized tags.** A new dish whose tags have never appeared before has nothing to average for `tag_weights`. Recommend flagging it explicitly as "new, no data yet" rather than guessing a neutral score.
+5. **Does an estimated score ever get replaced by real feedback?** Recommend: the first real YES/NO/MAYBE response replaces the `tag_weight_estimate` outright, since direct signal is stronger than an inference.
+6. **Which mess gets scored when both Rasoi and Aahar are options?** With two messes serving the same meal slot at the same time, does the agent score both and recommend the better one, only ever check one specific mess, or let the student pick a default? Not yet decided — needs an answer before the matching logic can run against real dual-mess data.
+7. **How does "fortnightly" Sunday brunch actually get detected?** `mess_structure.json` flags this as unresolved — fortnightly requires knowing a reference start date to count from (e.g. "every 2nd Sunday from Sept 1"), which hasn't been defined yet. Needs a concrete rule before the agent can know which Sundays are brunch days vs. normal breakfast/lunch days.
 
-1. **✅ RESOLVED — New/unrated items.** Your design doesn't guess blindly; it estimates from `tag_weights`, which is itself derived honestly from real ratings. This is better than the three options I originally proposed — it's a real weighted estimate, not a neutral placeholder or a made-up guess. Recommend keeping the `source` field on `ScoredDish` ("known_dish" vs "tag_weight_estimate") so the calendar description can honestly flag which recommendations are confident matches vs. estimates.
+## Sample Data (for testing the matching/scoring logic before wiring up Gemini/Drive/Calendar)
 
-2. **✅ MOSTLY RESOLVED — How a rating gets in.** New dishes get an estimated rating the moment they're scored (via `tag_weights`), and `tag_weights` recomputes from `known_dishes` each run — so the system self-improves as more dishes get added, without needing a separate manual-rating step. One thing still worth deciding: does the *estimated* rating on a new dish ever get replaced with a *real* rating later (e.g. after the student actually eats it and reacts), or does it just stay as an estimate forever? If you want it to improve, you'll need some way to capture an actual reaction after the meal, not just the yes/no RSVP.
+**Preferences** (`preferences_u001.json`) — real file, 17 rated dishes covering fruits, bread items, breakfast items (aloo bhaji, puri, upma, sabudana khichdi, poha), desserts (mousse, slice cake liked; jalebi, custard, payasam disliked), milk (disliked), and staples (chana, curd, rice — liked). `tag_weights` verified computationally against `known_dishes`. Note `skip_meal_slots` is now empty — no meal is being skipped by default.
 
-3. **Still open — dish with a completely unrecognized tag.** If a brand-new dish has tags that have never appeared in `known_dishes` at all (so no `tag_weights` entry exists for any of its tags), there's nothing to average. Decide now: does it get a default neutral score (e.g. 3), get excluded from "will like" entirely until it has at least one data point, or get flagged distinctly as "no signal yet" in the event description? **Recommendation:** treat it like Option C from before — show it in the description as "new dish, no data yet" rather than silently guessing 3, so the recommendation stays honest.
+**Mess Timings** (`mess_timings.json`) — the real meal windows:
 
-4. **Still open — delete-on-decline vs. keep-and-mark-declined.** Deleting the event on "no" matches your spec, but loses the record that the meal was ever evaluated. Given point 2's open question about whether ratings can later improve, you may want the decline to at least feed back into `known_dishes` (e.g. lower the estimated rating slightly) before the event is deleted, rather than just discarding the signal.
+| Meal | Window |
+|---|---|
+| Breakfast | 7:30 AM – 9:30 AM |
+| Lunch | 11:30 AM – 3:00 PM |
+| Snack | 5:00 PM – 6:00 PM |
+| Dinner | 7:30 PM – 10:00 PM |
 
-5. **Google Drive read access is confirmed available** — the skill reads the "meal-menu-match" sheet directly, no manual CSV upload step needed. What's still open: does the Calendar side use the same kind of direct access (an available Calendar connector), or does it still need separate OAuth setup? **Recommendation unchanged in spirit:** even with Drive/Calendar access available, build and test the scoring logic against the sample data below first, calling it with data read from the real sheet only once the logic itself is proven correct — don't let live Drive/Calendar calls be your first debugging surface.
+**Simulated Gemini extraction output** (`menu_intake_sample.json`) — stands in for what the Gemini API would return from reading a real image, including one deliberately "noisy" name to test the fuzzy-match safeguard:
 
-## Sample Data
+```json
+{
+  "date": "2026-09-18",
+  "source_image_id": "sample_image_001",
+  "extracted_items": ["Curd Rice", "Rajma Chawal", "paneer tkka", "Mushroom Risotto"]
+}
+```
 
-**Preferences** (`preferences_u001.json`) — this is your real file, used as-is. Verified: every `tag_weights` value is exactly the average rating across all `known_dishes` carrying that tag (checked computationally — all 15 tags match).
-
-**Menu Sheet stand-in** (`menu_archive_sample.csv`) — a local file matching the columns your real "meal-menu-match" Google Sheet should have, used for testing the scoring logic before connecting to the real sheet. Built to deliberately exercise all three scoring paths against your real preferences file:
-
-| id | name | tags | first_seen_date | Expected scoring path |
-|---|---|---|---|---|
-| m001 | Curd Rice | curd-based, rice, light | 2026-09-01 | Exact match → rating 5 |
-| m002 | Rajma Chawal | rice, dal, gravy, rice-bowl | 2026-09-01 | Exact match → rating 5 |
-| m003 | Kheer | dessert | 2026-09-02 | Exact match → rating 2 |
-| m004 | Veg Manchurian Rice Bowl | rice-bowl, fusion, spicy | 2026-09-15 | New dish, tags partially known → average of `rice-bowl` (5.0) + `fusion` (5.0); `spicy` has no weight, contributes nothing |
-| m005 | Mushroom Risotto | mushroom, italian | 2026-09-15 | New dish, ZERO recognized tags → Open Question 3: no data to average, needs a decision |
-
-This last row (`m005`) is deliberately included so you have a concrete test case for Open Question 3 before you write the code — you'll immediately hit "what do I do here?" if you don't decide the default behavior first.
+| Extracted name | Expected handling |
+|---|---|
+| Curd Rice | Exact match → known score |
+| Rajma Chawal | Exact match → known score |
+| paneer tkka | Should fuzzy-match to "Paneer Tikka" if that's in `known_dishes` — tests Open Question 1 |
+| Mushroom Risotto | Genuinely new, zero recognized tags → `no_data` — tests Open Question 4 |
 
 ## What to build first, in order
 
-1. Save `preferences_u001.json` and `menu_archive_sample.csv` (the local stand-in for the real Sheet) as real files in your repo.
-2. Decide Open Questions 3 and 4 (unrecognized-tag default, delete-vs-mark-declined) — write the answer directly into this SKILL.md before writing code, so the logic isn't decided ad-hoc mid-implementation.
-3. Build the scoring function using only the local sample files — not the real Drive sheet yet. Confirm all 5 sample rows score the way the table above predicts, including that `m005` behaves exactly as you decided in step 2.
-4. Only after that logic is tested and correct, swap the menu source from the local CSV to a real read of the "meal-menu-match" Google Sheet via Drive access.
-5. Wire up Calendar event creation (writing the matched results into the description) and response handling (accept/decline) last, once steps 3-4 are both working.
+1. Decide the five Open Questions above — write the answers directly into this file before coding.
+2. Build the fuzzy-name-matching safeguard as its own small, independently testable function — confirm "paneer tkka" correctly resolves to "Paneer Tikka" using your chosen threshold.
+3. Build the matching/scoring logic (steps 2-3) against `menu_intake_sample.json` and the real preferences file — no live Gemini, Drive, or Calendar calls yet. Confirm each sample row scores as the table above predicts.
+4. Build the calendar-conflict check and alternate-slot logic (step 4) against a small set of mock calendar events.
+5. Build the feedback-processing logic (step 6) — given a sample YES/NO/MAYBE + note, confirm `known_dishes` updates correctly.
+6. Only once steps 2-5 are all tested and passing, wire up the real Gemini API image read, real Drive access, and real Calendar API calls.

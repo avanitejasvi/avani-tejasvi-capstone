@@ -1,0 +1,49 @@
+{
+  "comment": "This file describes the STRUCTURE of the mess system (locations, menu categories, timings) - not personal taste. Kept separate from preferences_u001.json on purpose: this data changes if the mess changes its format, preferences_u001.json changes based on what the user likes. The 'categories' arrays are the exact field labels Gemini should look for when scanning a menu image - dish names get extracted under each of these headings, along with which mess and meal they belong to.",
+  "messes": ["Rasoi", "Aahar"],
+  "meals": {
+    "breakfast": {
+      "timing": {"start_time": "07:30", "end_time": "09:30"},
+      "same_for_both_messes": true,
+      "categories": null,
+      "categories_note": "Not specified yet - categories for breakfast menu items need to be confirmed before extraction logic can be built."
+    },
+    "lunch": {
+      "timing": {"start_time": "11:30", "end_time": "15:00"},
+      "same_for_both_messes": false,
+      "mess_specific_structure": {
+        "Rasoi": {
+          "style": "rice_bowl",
+          "note": "Rice Bowl concept only exists at Rasoi Dining, not Aahar.",
+          "categories": ["Salad", "Starter", "Bowl", "Accompaniment", "Accompaniment", "Dessert", "Beverage"]
+        },
+        "Aahar": {
+          "style": "buffet",
+          "categories": ["Soup", "Salad", "Side Dish", "Accompaniment", "Dry Veg", "Gravy Veg", "Dry Veg - Jain", "Gravy Veg - Jain", "Dal", "Rice", "Roti", "Curd", "Pickle", "Papad", "Sweet"]
+        }
+      }
+    },
+    "evening_snacks": {
+      "timing": {"start_time": "17:00", "end_time": "18:00"},
+      "same_for_both_messes": true,
+      "categories": ["Beverage", "Beverage", "Main", "Accompaniment"]
+    },
+    "dinner": {
+      "timing": {"start_time": "19:30", "end_time": "22:30"},
+      "same_for_both_messes": true,
+      "style": "buffet",
+      "categories": ["Soup", "Salad", "Side Dish", "Accompaniment", "Dry Veg", "Gravy Veg", "Dry Veg - Jain", "Gravy Veg - Jain", "Rice", "Dal", "Phulka", "Drink", "Pickle", "Papad", "Sweet"]
+    }
+  },
+  "special_schedule": {
+    "sunday_brunch": {
+      "frequency": "fortnightly",
+      "timing": {"start_time": "10:00", "end_time": "14:30"},
+      "categories": null,
+      "categories_note": "Categories not fixed - the brunch menu structure should be read directly from that week's menu image rather than assumed from a fixed category list, since it may vary.",
+      "occurs_instead_of": ["breakfast", "lunch"],
+      "scheduling_note": "Fortnightly means this needs a way to know WHICH Sundays it applies to (e.g. every other Sunday from a known start date) - not yet specified. See Open Questions."
+    }
+  },
+  "extraction_instructions_for_gemini": "When reading a daily menu image, identify the bold category labels shown above (e.g. 'Dal', 'Gravy Veg', 'Dessert') as the fields to scan for. Extract the actual dish name listed under each category, and tag each extracted item with: which mess it belongs to (Rasoi or Aahar), which meal (breakfast/lunch/evening_snacks/dinner/sunday_brunch), and which category it was listed under. A dish appearing under two categories on the same day (e.g. same item in both 'Dry Veg' and 'Dry Veg - Jain') should be recorded as two separate entries, since the Jain/non-Jain distinction may matter for dietary_restrictions matching later."
+}

@@ -1,0 +1,7 @@
+[
+  {"meal_slot": "breakfast", "start_time": "07:30", "end_time": "09:30"},
+  {"meal_slot": "lunch", "start_time": "11:30", "end_time": "15:00"},
+  {"meal_slot": "evening_snacks", "start_time": "17:00", "end_time": "18:00"},
+  {"meal_slot": "dinner", "start_time": "19:30", "end_time": "22:30"},
+  {"meal_slot": "sunday_brunch", "start_time": "10:00", "end_time": "14:30", "note": "Fortnightly only - not every Sunday. Replaces breakfast and lunch on weeks it occurs."}
+]
