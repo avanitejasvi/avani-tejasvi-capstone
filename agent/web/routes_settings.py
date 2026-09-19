@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from agent.db import get_db
 from agent.llm_providers import SUPPORTED_PROVIDERS
 from agent.models_db import User
+from agent.preference_questions import QUESTIONS, apply_answers
 from agent.repository import Repository
 from agent.web.deps import get_current_user
 
@@ -23,6 +24,7 @@ def settings_form(request: Request, user: User = Depends(get_current_user), db: 
         request, "settings.html",
         {
             "prefs": prefs, "meal_slots": MEAL_SLOTS, "user": user,
+            "questions": QUESTIONS,
             "llm_providers": sorted(SUPPORTED_PROVIDERS),
             "current_llm_provider": repo.has_llm_key(user.id),
         },
@@ -37,8 +39,13 @@ async def save_settings(request: Request, user: User = Depends(get_current_user)
 
     repo = Repository(db)
     prefs = repo.load_preferences(user.id)
+    # Reset to this submission's free-text list first, then let the
+    # menu-grounded questions layer their own restrictions (jain/dairy/
+    # gluten/paneer) on top fresh — so unchecking one of those on a later
+    # visit actually removes it instead of leaving a stale entry behind.
     prefs.dietary_restrictions = dietary_restrictions
     prefs.skip_meal_slots = skip_meal_slots
+    prefs = apply_answers(prefs, form)
     repo.save_preferences(user.id, prefs)
     repo.mark_onboarded(user.id)
 
