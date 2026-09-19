@@ -9,17 +9,18 @@
 #     No Volume on either service — see agent/web/routes_menu.py, images are
 #     never persisted.
 
-# Build steps (setup/install/start) live in nixpacks.toml at the repo root —
-# Nixpacks' own auto-detection was generating a broken Dockerfile since
-# requirements.txt isn't at the repo root, so it's now spelled out
-# explicitly there instead of duplicated/possibly conflicting with this file.
-# `builder` still has to be pinned here, though: without it Railway falls
-# back to its newer default builder ("Railpack"), which doesn't read
-# nixpacks.toml at all and fails with "could not determine how to build
-# the app" even though the files are all right there.
+# Built from the repo-root Dockerfile, not auto-detected. Both of Railway's
+# own auto-build systems failed on this repo before this was added: Railpack
+# couldn't tell how to build a Python app whose requirements.txt isn't at
+# the repo root ("could not determine how to build the app"), and Nixpacks
+# generated a broken internal Dockerfile regardless of what nixpacks.toml
+# said ("ENV names can not be blank", a bug in its own auto-generation, not
+# anything in this repo's config). A hand-written Dockerfile removes both
+# failure modes by giving full control instead of relying on either one's
+# auto-detection.
 
 [build]
-builder = "NIXPACKS"
+builder = "DOCKERFILE"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
