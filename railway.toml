@@ -13,6 +13,13 @@
 # Nixpacks' own auto-detection was generating a broken Dockerfile since
 # requirements.txt isn't at the repo root, so it's now spelled out
 # explicitly there instead of duplicated/possibly conflicting with this file.
+# `builder` still has to be pinned here, though: without it Railway falls
+# back to its newer default builder ("Railpack"), which doesn't read
+# nixpacks.toml at all and fails with "could not determine how to build
+# the app" even though the files are all right there.
+
+[build]
+builder = "NIXPACKS"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
