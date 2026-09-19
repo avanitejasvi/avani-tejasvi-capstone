@@ -7,6 +7,12 @@ RUN pip install --no-cache-dir -r agent/requirements.txt
 
 COPY . .
 
+# Railway's Docker-based routing needs a declared port to know where to
+# send public traffic — Nixpacks/Railpack builds infer this automatically
+# from the start command, but a raw Dockerfile doesn't get that for free.
+EXPOSE 8080
+ENV PORT=8080
+
 # Shell form (not exec form) so $PORT expands from the runtime environment
 # Railway injects — exec-form CMD arrays don't do shell variable expansion.
 # The cron service overrides this with its own Custom Start Command
