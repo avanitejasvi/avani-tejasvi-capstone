@@ -45,8 +45,10 @@ RESPONSE_BASELINE = {"yes": 4.0, "no": 1.5, "maybe": 2.5}
 # the default — override via GEMINI_MODEL if that changes.
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 # The real menu board has 300+ dishes once every mess/meal is included; the default
-# output-token limit truncates the JSON array mid-string on a board this size.
-GEMINI_EXTRACTION_MAX_OUTPUT_TOKENS = 16000
+# output-token limit truncates the JSON array mid-string on a board this size. 16000
+# was enough for earlier boards but not every real photo — raised further, with
+# _parse_json_array_lenient below as a safety net if a board is bigger still.
+GEMINI_EXTRACTION_MAX_OUTPUT_TOKENS = 32000
 
 MEAL_DURATION_MINUTES = 45
 SLOT_SEARCH_STEP_MINUTES = 15
@@ -290,7 +292,7 @@ class GeminiSkill:
             contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), prompt],
             config=types.GenerateContentConfig(max_output_tokens=GEMINI_EXTRACTION_MAX_OUTPUT_TOKENS),
         )
-        parsed = json.loads(_strip_code_fence(response.text))
+        parsed = _parse_json_array_lenient(_strip_code_fence(response.text))
         return [ExtractedDish(**item) for item in parsed]
 
     def interpret_feedback_note(self, dish_name: str, response: str, note: Optional[str]) -> str:
@@ -315,6 +317,23 @@ class GeminiSkill:
         if word not in {"positive", "negative", "neutral"}:
             raise ValueError(f"Gemini returned an unrecognized sentiment word: {word!r}")
         return word
+
+
+def _parse_json_array_lenient(text: str) -> list:
+    """A big enough real board can still exceed even a raised output-token
+    ceiling, cutting Gemini's response off mid-object. Rather than losing the
+    whole week's extraction to one broken trailing item, salvage every
+    complete object up to the truncation point and close the array there —
+    a partial menu the student can re-upload to fill in is far better than a
+    hard failure on the whole request."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        truncated = text[: exc.pos]
+        last_complete = truncated.rfind("}")
+        if last_complete == -1:
+            raise
+        return json.loads(truncated[: last_complete + 1] + "]")
 
 
 def _strip_code_fence(text: str) -> str:
