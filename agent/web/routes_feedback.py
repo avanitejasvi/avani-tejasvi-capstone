@@ -1,13 +1,9 @@
-"""Manual "how was it" feedback.
-
-Once STUDENT_EMAIL/the single attendee was removed for multi-tenancy, the
-calendar owner's own RSVP carries no signal — collect_feedback.py's
-automated check can only ever detect a *cancelled* event and apply a
-decline. Without this page, a dish's rating could only ever go down, never
-up from real experience: the preference model would stop being a real
-self-improving loop (plan.md's "it updates itself" criterion) and become a
-one-way ratchet. This restores the positive direction, and is also the only
-remaining production caller of GeminiSkill.interpret_feedback_note.
+"""Manual "how was it" feedback — a self-serve way to rate a past meal right
+now, without waiting for a Calendar RSVP to land or the next weekly
+collect_feedback.py pass to check it. Real Calendar RSVPs (see
+GoogleCalendarSkill.get_response) are the primary automated signal again as
+of the meal's own attendee entry being restored — this page is a
+complementary, immediate channel, not the only one.
 """
 import uuid
 
@@ -17,9 +13,9 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from agent.db import get_db
-from agent.llm_providers import classify_note_sentiment
+from agent.feedback_sentiment import classify_sentiment
 from agent.models_db import User
-from agent.react_agent import GeminiSkill, MenuPreferenceMatchingSkill
+from agent.react_agent import MenuPreferenceMatchingSkill
 from agent.repository import Repository
 from agent.timezone import today_ist
 from agent.web.deps import get_current_user
@@ -52,20 +48,9 @@ async def submit_feedback(meal_id: str, request: Request, user: User = Depends(g
 
     if response in {"yes", "no", "maybe"}:
         matcher = MenuPreferenceMatchingSkill()
-        own_key = repo.get_llm_key(user.id)  # (provider, api_key), or None -> fall back to the shared Gemini key
-        gemini = GeminiSkill()
         prefs = repo.load_preferences(user.id)
         for dish_name in row.top_picks:
-            sentiment = "neutral"
-            if note:
-                try:
-                    if own_key is not None:
-                        provider, api_key = own_key
-                        sentiment = classify_note_sentiment(provider, api_key, dish_name, response, note)
-                    elif gemini.available:
-                        sentiment = gemini.interpret_feedback_note(dish_name, response, note)
-                except Exception:
-                    sentiment = "neutral"
+            sentiment = classify_sentiment(repo, user.id, dish_name, response, note)
             prefs = matcher.apply_feedback(prefs, dish_name, response, note, sentiment, row.event_date)
         repo.save_preferences(user.id, prefs)
 

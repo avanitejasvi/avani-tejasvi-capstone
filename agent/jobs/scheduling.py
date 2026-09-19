@@ -60,6 +60,7 @@ def _clear_reminder(repo: Repository, user_id, week_start: date) -> None:
 
 def _schedule_one(repo: Repository, user_id, event_date: date, meal_slot: str, extracted_items: list, claim_id) -> None:
     credentials = repo.build_user_credentials(user_id)  # raises GoogleAuthUnavailable -> caller sets needs_reauth
+    user = repo.get_user(user_id)
     agent = ReActMealAgent(
         user_id=str(user_id),
         calendar_skill=GoogleCalendarSkill(credentials=credentials),
@@ -68,6 +69,9 @@ def _schedule_one(repo: Repository, user_id, event_date: date, meal_slot: str, e
         fs=FilesystemTool(),
         repo=repo,
         live=True,
+        # A real attendee entry is what makes the RSVP actionable — see
+        # create_event_with_id's docstring.
+        attendee_email=user.email if user else None,
     )
     scheduled = agent.run(meal_slot, event_date, cached_items=extracted_items)
     repo.update_scheduled_meal(

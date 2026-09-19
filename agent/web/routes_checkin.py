@@ -2,8 +2,8 @@
 ACTUAL current week's uploaded menu (menu_intake), not the fixed
 historical board /preferences is grounded in. Answers feed the SAME
 MenuPreferenceMatchingSkill.apply_feedback the manual /feedback page and
-the automated cancellation check already use — a check-in response is
-treated exactly like a real yes/no/maybe, so it becomes real experience
+the automated weekly collect_feedback.py job (real Calendar RSVPs) already
+use — a check-in response is treated exactly like a real yes/no/maybe, so it becomes real experience
 (times_eaten increments, rating adjusts) layered on top of the baseline,
 never overwriting it.
 

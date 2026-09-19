@@ -296,12 +296,10 @@ class GeminiSkill:
         return [ExtractedDish(**item) for item in parsed]
 
     def interpret_feedback_note(self, dish_name: str, response: str, note: Optional[str]) -> str:
-        """Kept as a standalone capability even though the current weekly-cadence
-        production job doesn't call it: since removing the single STUDENT_EMAIL
-        attendee, there's no per-run RSVP+note to classify anymore (see
-        GoogleCalendarSkill.get_event_status). Still available for a future
-        richer feedback channel (e.g. a manual "how was it" reply) without
-        needing to re-derive the Gemini call."""
+        """Called (via agent/feedback_sentiment.py's shared helper, when a
+        student hasn't set their own bring-your-own key) from every real
+        feedback path: the weekly collect_feedback.py job reading a real
+        Calendar RSVP comment, and the manual /feedback page."""
         if not note:
             return "neutral"
         prompt = (
@@ -370,12 +368,21 @@ class GoogleCalendarSkill:
         return result.get("items", [])
 
     def create_event_with_id(
-        self, event_id: str, meal_slot: str, event_date: date, start_time: dt_time, description: str, flagged: bool = False
+        self, event_id: str, meal_slot: str, event_date: date, start_time: dt_time, description: str,
+        flagged: bool = False, attendee_email: Optional[str] = None,
     ) -> str:
         """Uses a deterministic event id (see deterministic_event_id) so a
         retry after a mid-request crash — event created, but the caller's DB
         write never landed — is recovered by treating Calendar's 409 as
-        success rather than creating a duplicate."""
+        success rather than creating a duplicate.
+
+        attendee_email, when given, adds the student as a real attendee on
+        their own event — an event you merely own doesn't get an actionable
+        RSVP, but one you're also listed as an attendee on does (this
+        project's own single-user history confirms it: real YES/NO/MAYBE +
+        comment feedback worked exactly this way before the multi-tenant
+        rebuild). Requires sendUpdates="all" so Calendar actually notifies
+        the attendee — see get_response for reading the RSVP back."""
         start_dt = datetime.combine(event_date, start_time)
         end_dt = start_dt + timedelta(minutes=MEAL_DURATION_MINUTES)
         summary = f"Mess meal check: {meal_slot.replace('_', ' ').title()}"
@@ -388,8 +395,12 @@ class GoogleCalendarSkill:
             "start": {"dateTime": start_dt.isoformat(), "timeZone": "Asia/Kolkata"},
             "end": {"dateTime": end_dt.isoformat(), "timeZone": "Asia/Kolkata"},
         }
+        send_updates = "none"
+        if attendee_email:
+            body["attendees"] = [{"email": attendee_email}]
+            send_updates = "all"
         try:
-            created = self.service.events().insert(calendarId=self.calendar_id, body=body).execute()
+            created = self.service.events().insert(calendarId=self.calendar_id, body=body, sendUpdates=send_updates).execute()
             return created["id"]
         except HttpError as exc:
             if exc.resp.status == 409:
@@ -422,10 +433,10 @@ class GoogleCalendarSkill:
 
     def get_event_status(self, event_id: str) -> Optional[str]:
         """Returns None if the event no longer exists (404), else its status
-        ("confirmed" or "cancelled"). Since removing the single STUDENT_EMAIL
-        attendee, the calendar owner's own RSVP carries no signal — whether
-        the event still exists is the only feedback signal jobs/collect_feedback.py
-        uses."""
+        ("confirmed" or "cancelled"). A cheap existence check — get_response
+        below is the real feedback signal now that events carry a real
+        attendee again; this stays useful on its own for things like the
+        weekly menu-reminder event, which has no attendee to RSVP on."""
         try:
             event = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
         except HttpError as exc:
@@ -433,6 +444,30 @@ class GoogleCalendarSkill:
                 return None
             raise
         return event.get("status")
+
+    def get_response(self, event_id: str) -> tuple[Optional[str], Optional[str]]:
+        """Returns (response, note). Requires the event to have been created
+        with attendee_email set (see create_event_with_id) — an event you
+        only own, with no attendee entry, has nothing here to read. Google
+        Calendar lets an attendee add a free-text comment when RSVPing (the
+        'comment' field) — that's the note YES/NO/MAYBE travels with.
+        response is None if the event is deleted/cancelled -> caller should
+        treat that as a decline; also None if the student genuinely hasn't
+        responded yet ("needsAction") -> caller should leave it pending."""
+        try:
+            event = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+        except HttpError as exc:
+            if exc.resp.status == 404:
+                return None, None
+            raise
+        if event.get("status") == "cancelled":
+            return None, None
+        for attendee in event.get("attendees", []):
+            if attendee.get("self"):
+                status = attendee.get("responseStatus")
+                response = {"accepted": "yes", "declined": "no", "tentative": "maybe"}.get(status)
+                return response, attendee.get("comment")
+        return None, None
 
     def delete_event(self, event_id: str) -> None:
         try:
@@ -576,6 +611,7 @@ class ReActMealAgent:
         fs: FilesystemTool,
         repo: AgentRepository,
         live: bool = False,
+        attendee_email: Optional[str] = None,
     ):
         self.user_id = user_id
         self.calendar = calendar_skill
@@ -584,6 +620,10 @@ class ReActMealAgent:
         self.fs = fs
         self.repo = repo
         self.live = live
+        # The student's own email, added as a real attendee on their own
+        # event so their Calendar RSVP is a real, actionable one instead of
+        # an event they merely own — see GoogleCalendarSkill.create_event_with_id.
+        self.attendee_email = attendee_email
         self.trace: list[Trace] = []
         self._step_counter = 0
 
@@ -804,7 +844,9 @@ class ReActMealAgent:
         event_id = deterministic_event_id(self.user_id, event_date.isoformat(), meal_slot)
         action_input = {"meal_slot": meal_slot, "event_date": str(event_date), "start_time": str(start_time), "event_id": event_id}
         try:
-            created_id = self.calendar.create_event_with_id(event_id, meal_slot, event_date, start_time, description, flagged)
+            created_id = self.calendar.create_event_with_id(
+                event_id, meal_slot, event_date, start_time, description, flagged, attendee_email=self.attendee_email
+            )
             self._log(
                 "Push the result into this user's own Calendar as the actual interface, per SKILL.md.",
                 "google_calendar.create_event_with_id",

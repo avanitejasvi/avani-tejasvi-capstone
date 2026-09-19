@@ -1,32 +1,29 @@
-"""Checked once, a week later, for every unresolved scheduled_meals row: did
-the event survive? Deleted/cancelled -> a synthetic decline on its
-top_picks — the only feedback signal left once the calendar owner's own RSVP
-carries no information (see GoogleCalendarSkill.get_event_status). Still
-present -> no signal; there's nothing to learn from silence, and there's no
-future information from an event whose owner will never RSVP against
-themselves, so it's simply marked resolved either way.
+"""Checked weekly for every unresolved scheduled_meals row: reads the
+student's real Calendar RSVP (GoogleCalendarSkill.get_response — each
+event carries a real attendee entry again as of scheduling.py passing the
+student's own email through, restoring the exact mechanism this project's
+single-user build already proved out live, per BUILD_LOG.md) and applies
+it through the same apply_feedback the manual /feedback page uses. A
+deleted/cancelled event is treated as a decline. If the student genuinely
+hasn't responded yet, the row is left unresolved for a later run to check
+again, rather than guessing.
 """
 import argparse
 import logging
 
 from agent.db import get_sessionmaker
+from agent.feedback_sentiment import classify_sentiment
 from agent.react_agent import GoogleAuthUnavailable, GoogleCalendarSkill, MenuPreferenceMatchingSkill
 from agent.repository import Repository
 from agent.timezone import today_ist
 
 logger = logging.getLogger("agent.jobs.collect_feedback")
 
-# response="no" + a neutral note is the synthetic-decline signal — matches
-# MenuPreferenceMatchingSkill.apply_feedback's existing "no" handling exactly,
-# just triggered by event-cancellation instead of a real RSVP.
-SYNTHETIC_DECLINE_RESPONSE = "no"
-SYNTHETIC_DECLINE_SENTIMENT = "neutral"
-
 
 def run(dry_run: bool = False) -> dict:
     db = get_sessionmaker()()
     matcher = MenuPreferenceMatchingSkill()
-    summary = {"checked": 0, "declined": 0, "no_signal": 0, "failed": 0}
+    summary = {"checked": 0, "applied": 0, "pending": 0, "no_signal": 0, "failed": 0}
     try:
         repo = Repository(db)
         rows = repo.list_unresolved_scheduled_meals(today_ist())
@@ -42,7 +39,8 @@ def run(dry_run: bool = False) -> dict:
 
             try:
                 credentials = repo.build_user_credentials(row.user_id)
-                status = GoogleCalendarSkill(credentials=credentials).get_event_status(row.calendar_event_id)
+                calendar = GoogleCalendarSkill(credentials=credentials)
+                status = calendar.get_event_status(row.calendar_event_id)
             except GoogleAuthUnavailable:
                 summary["failed"] += 1
                 continue
@@ -52,16 +50,25 @@ def run(dry_run: bool = False) -> dict:
                 continue
 
             if status is None or status == "cancelled":
-                prefs = repo.load_preferences(row.user_id)
-                for dish_name in row.top_picks:
-                    prefs = matcher.apply_feedback(
-                        prefs, dish_name, SYNTHETIC_DECLINE_RESPONSE, None, SYNTHETIC_DECLINE_SENTIMENT, row.event_date
-                    )
-                repo.save_preferences(row.user_id, prefs)
-                summary["declined"] += 1
+                response, note = "no", None  # deleted/cancelled -> the one signal left without a real RSVP
             else:
-                summary["no_signal"] += 1
+                try:
+                    response, note = calendar.get_response(row.calendar_event_id)
+                except Exception:
+                    logger.exception("collect_feedback: RSVP read failed for scheduled_meal=%s", row.id)
+                    summary["failed"] += 1
+                    continue
+                if response is None:
+                    summary["pending"] += 1
+                    continue  # hasn't responded yet — check again on a later run
+
+            prefs = repo.load_preferences(row.user_id)
+            for dish_name in row.top_picks:
+                sentiment = classify_sentiment(repo, row.user_id, dish_name, response, note)
+                prefs = matcher.apply_feedback(prefs, dish_name, response, note, sentiment, row.event_date)
+            repo.save_preferences(row.user_id, prefs)
             repo.mark_feedback_applied(row.id)
+            summary["applied"] += 1
 
         logger.info("collect_feedback: %s", summary)
         return summary

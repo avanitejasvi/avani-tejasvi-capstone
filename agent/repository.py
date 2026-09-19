@@ -31,6 +31,9 @@ class Repository:
 
     # --- users ---------------------------------------------------------
 
+    def get_user(self, user_id) -> Optional[User]:
+        return self.db.get(User, user_id)
+
     def get_user_by_google_sub(self, google_sub: str) -> Optional[User]:
         return self.db.scalar(select(User).where(User.google_sub == google_sub))
 
@@ -292,9 +295,9 @@ class Repository:
 
     def list_pending_manual_feedback(self, user_id, before_date: date, limit: int = 10) -> list[ScheduledMealRow]:
         """Past, unresolved meals for one user, for the manual "how was it"
-        feedback page — the only path left that can raise a rating from real
-        experience (collect_feedback.py's automated check can only ever
-        produce a decline, on cancellation)."""
+        feedback page — a self-serve, immediate complement to the automated
+        weekly collect_feedback.py job, which reads the same real Calendar
+        RSVP but only checks once a week."""
         return list(self.db.scalars(
             select(ScheduledMealRow).where(
                 ScheduledMealRow.user_id == user_id,
