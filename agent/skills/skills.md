@@ -1,192 +1,158 @@
-# SKILL.md — Meal Recommendation Agent (Build Version)
+# SKILL.md — Meal Recommendation Agent (Multi-Tenant Build)
 
 ## Overview
 
-This Skill manages a student's daily mess meal recommendation and scheduling, end to end. It's one Skill — Google Drive, Google Calendar, and the Gemini API are tools/actions it uses internally, not separate skills.
+This Skill manages a student's mess meal recommendation and scheduling, end to end, for **any number of students independently**. It's still one Skill — Gemini, Google Calendar, and Postgres are tools/actions it uses internally, not separate skills — but it now runs multi-tenant: any `@flame.edu.in` student signs in with their own Google account, gets their own Calendar scheduled, and builds up their own separate learned preferences.
 
-**Design direction per professor feedback:** menu intake uses the **Gemini API reading menu images**, not a structured Sheet. Combined with the two strongest pieces from earlier design passes: **tag-based fallback scoring** for genuinely new dishes (instead of leaving them a blank slate), and the richer **YES/NO/MAYBE + note feedback loop** with **calendar-conflict resolution**.
+One-line summary: **once a week, any student uploads a photo of the mess's weekly menu board → Gemini reads it once and stores the extraction, shared → every active student's own preferences get matched against it → each student's own Calendar is checked against mess timings, resolving conflicts with an alternate slot if needed → each meal is scheduled on that student's own calendar → the student rates it later (or the system notices if they cancelled it) → the specific dish's preference data updates → repeat next week, automatically, with no one having to ask.**
 
-One-line summary: **each morning, Gemini reads a photographed menu image and extracts + stores the day's dishes → match each dish against preferences (exact match, or tag-based estimate for new dishes) → check the student's Calendar against mess timings, resolving conflicts with an alternate slot if needed → schedule the meal and invite the student → student responds YES/NO/MAYBE + optional note → Gemini interprets the response and updates that specific item's preference data → repeat the next day.**
+## What changed from the single-user build, and why
 
-## Interface: Gemini API + Google Drive + Google Calendar
+The project started as a single-user CLI (one Google account, one Drive folder, one `preferences_u001.json`, run manually per day). Turning it into a hosted, multi-student product required three real changes to the design, not just a bigger deployment:
 
-- **Menu source:** a photographed/scanned image of the day's mess menu, stored in a Google Drive folder. The **Gemini API reads the image** each morning and extracts dishes, tagged with which mess (**Rasoi** or **Aahar**), which meal, and which menu category (e.g. "Dal," "Gravy Veg - Jain") they were listed under — see `mess_structure.json` for the exact category labels per mess per meal, since **Rasoi and Aahar have genuinely different menu structures** (Rasoi is rice-bowl style, Aahar is full buffet style).
-- **Extracted data must be stored**, not just used transiently — write the extracted dish list to a persistent `MenuIntake` record for that date immediately after extraction, before any matching happens.
-- **Calendar:** Google Calendar, checked for existing events during each meal window before scheduling, and used to create the meal event with match results in the description.
+1. **Menu source: upload, not Drive.** Every student saw the same physical menu board anyway — there was never a reason for each of them to connect their own Drive. Any logged-in student uploads the week's photo through the web app; Gemini extracts it **once**, and that becomes one shared `MenuIntake` every student's own scheduling run reads.
+2. **Cadence: weekly, not daily.** The mess posts one photo covering the whole week, so scheduling now runs once a week (Monday 9:30am IST, via a Railway Cron job) instead of needing a person to invoke it once a day.
+3. **Feedback: two channels, not one.** The old design invited a single hardcoded `STUDENT_EMAIL` as an attendee and read their RSVP. That doesn't work once every student has their own calendar — the calendar *owner's own* RSVP on their own event carries no information (it's effectively always "accepted"). Two channels replace it: an automated one that can only ever detect a **decline** (the student cancelled the event), and a manual **"rate this meal"** page that's the only remaining way a rating can go *up* from real experience. See "Feedback" below — this distinction matters and is easy to miss.
+
+## Interface: Gemini API + Google Calendar (per-user) + Postgres
+
+- **Menu source:** a photo of the week's mess menu board, uploaded through the web app by any signed-in student (`/menu/upload`). Gemini reads it once and extracts dishes, tagged with mess (**Rasoi** or **Aahar**), meal slot, weekday, and menu category — see `mess_structure.json`.
+- **Extracted data is stored before anything else happens** — a two-step upload flow (extract → preview → explicit confirm) writes the shared `menu_intake` Postgres row for each of the week's 7 dates only once confirmed, so one bad photo can't silently clobber the whole college's menu.
+- **Calendar:** each student's own Google Calendar, accessed via their own OAuth-granted, encrypted-at-rest refresh token — never a shared account. Checked for existing events during each meal window before scheduling, and used to create the meal event with match results in the description.
+- **Identity:** Google Sign-In doubles as both login and Calendar-access consent, gated to verified `@flame.edu.in` accounts (checked against the ID token's `email_verified` and `hd`/email-suffix claims server-side, not just Google's account-chooser hint).
+- **Storage:** Postgres, one `preferences` row per student (JSONB columns, same shape as the old per-file `known_dishes`/`tag_weights`), replacing one JSON file per person.
 
 ## OCR Reliability Safeguard
 
-Reading a real photographed menu is inherently less reliable than a structured data source — extracted dish names can come back slightly different each time (e.g. "Paneer Tikka" vs "Paneer Tkka" vs "paneer tikka"). Since the matching logic depends on **exact name match** against `known_dishes`, an unhandled misread would silently create a duplicate "new" item instead of matching existing preference history.
+Unchanged from the single-user build — still worth restating, since it's still exactly how new-vs-known dishes are told apart. Reading a real photographed menu is inherently less reliable than a structured data source — extracted dish names can come back slightly different each time (e.g. "Paneer Tikka" vs "Paneer Tkka" vs "paneer tikka"). Since matching depends on **exact name match** against `known_dishes`, an unhandled misread would silently create a duplicate "new" item instead of matching existing preference history.
 
-**Mitigation:** before treating an extracted item as brand-new, run a simple fuzzy/normalized comparison (lowercase, strip whitespace, and a basic string-similarity check) against existing `known_dishes` names. If a close match exists above a similarity threshold, treat it as the same dish rather than creating a duplicate. This is a small, buildable safeguard — not a full OCR-correction system — that keeps the known-dish matching from silently degrading over time.
+**Mitigation:** before treating an extracted item as brand-new, run a normalized comparison (lowercase, whitespace-collapsed) and a string-similarity check against existing `known_dishes` names. Above the threshold, it's the same dish, not a duplicate.
 
 ## Data Sources
 
-1. **Menu Images** — stored in Drive, read via the Gemini API each morning.
-2. **Menu Intake Records** — the extracted-and-stored result of that read, one per day, kept even after matching runs (see Data Model).
-3. **Preferences File** (`preferences_u001.json`):
+1. **Menu Images** — never stored; extracted in memory at upload time, only a `sha256` hash is kept (`menu_intake.source_image_id`) for reference.
+2. **Menu Intake** (`menu_intake` table) — the shared, once-a-week extraction, one row per calendar date, read fresh by every student's own scheduling run. A date "has a menu" iff a row exists for it — no separate processed flag.
+3. **Preferences** (`preferences` table, one row per student):
    - `dietary_restrictions` — hard excludes, checked first.
    - `skip_meal_slots` — a behavior rule, handled before scoring runs.
-   - `known_dishes` — every dish rated by exact (normalized) name, with tags, a running score, and times eaten.
-   - `tag_weights` — derived, recomputed from `known_dishes` each run: the average rating across every known dish carrying a given tag. Used as the fallback estimate for dishes not yet in `known_dishes`.
-4. **Mess Timings** — fixed meal-slot windows (breakfast/lunch/dinner), used for both matching context and conflict-checking.
+   - `known_dishes` — every dish this specific student has a rating for, by exact (normalized) name, with tags, a running `rating`, and `times_eaten`.
+   - `tag_weights` — derived, recomputed from that student's `known_dishes` every run; never persisted.
+4. **Mess Structure** (`mess_structure.json`) — the two messes, their per-meal category labels, and the Gemini extraction prompt. Structural, shared, not personal taste.
+5. **Mess Timings** (`mess_timings.json`) — the real meal-slot windows, used for both matching context and conflict-checking.
 
 ## Workflow
 
-### 1. Morning menu intake
+### 1. Weekly menu upload (any signed-in student, any day)
 
-- Each morning, the agent retrieves the day's menu image from Drive.
-- The Gemini API reads the image and extracts the list of dishes.
-- The extracted list is stored as a `MenuIntake` record for that date, before anything else happens.
+- Upload a photo → Gemini extracts it once → a preview shows extracted counts and a name sample, with an explicit **overwrite** checkbox if any of the week's dates already have a menu → confirming writes one `menu_intake` row per date and triggers scheduling for that week immediately (see "Catch-up scheduling" below) rather than waiting for the next Monday.
 
-### 2. Normalize and check behavior rules
+### 2. Weekly scheduling (Railway Cron, Monday 9:30am IST, `agent/jobs/run_all.py`)
 
-- If today's meal slot is in `skip_meal_slots`, skip the entire meal — no scoring, no event.
-- For remaining slots, normalize each extracted dish name (per the OCR Reliability Safeguard above) and exclude anything violating `dietary_restrictions`.
+For the current week:
+- **No menu uploaded at all** → schedule nothing; put one reminder event on each active student's own calendar ("Upload this week's mess menu," linking to `/menu/upload`) and show a dashboard banner. Both use a **deterministic event id**, so a re-run of the job never creates a second reminder.
+- **Partial menu** (some dates missing) → schedule the days that do have a menu; flag the rest in the run log and the dashboard banner.
+- For every `(date, meal_slot)` that has a menu, for every active student with a valid Calendar token: check `skip_meal_slots`, then a per-student, per-date, per-slot **claim row** (`scheduled_meals`, a unique constraint) — only the run that wins the claim touches that student's Calendar, so two overlapping runs (the cron job and a late-upload catch-up trigger) can never double-schedule the same meal.
+- A student whose Google token has actually expired/been revoked is skipped (flagged `needs_reauth`, with a "Reconnect Google" dashboard banner) rather than failing the whole batch — **one broken student's token never blocks anyone else's meals.**
 
-### 3. Match menu against preferences
+### 3. Match menu against preferences (per student — unchanged logic, just run once per active student instead of once total)
 
-For each remaining dish:
-- **Exact (normalized) match in `known_dishes`** → use its stored, running score directly.
-- **No match — genuinely new dish** → estimate from `tag_weights`: average the weight of each of its tags. If none of its tags have a recorded weight yet, there's no signal to average — flag it distinctly as "new, no data yet" rather than guessing a neutral score.
-- New dishes get added to `known_dishes` with their estimated score, so `tag_weights` self-improves on the next run.
+- **Exact (normalized) match in `known_dishes`** → use that student's stored, running score directly.
+- **No match** → estimate from that student's own `tag_weights`; no recognized tags at all → `no_data`, skip rather than guess.
+- New dishes get added to that student's `known_dishes` with the estimate, so their own `tag_weights` self-improve on their next run — this is per-student, since two students can have completely different tastes for the same dish.
 
-### 4. Check calendar conflicts and schedule
+### 4. Check calendar conflicts and schedule (per student's own calendar)
 
-- Identify the student's top-scoring meal options from step 3.
-- Check the student's Google Calendar for an existing event during that meal's mess timing window.
-- **No conflict** → create the event at the normal mess timing, add the student as invitee.
-- **Conflict found** → look for another suitable time within the mess's available slot; schedule there instead if one exists.
-- **No alternate slot available either** → flag for the student rather than silently failing (see Open Questions).
+- **No conflict** → create the event at the normal mess timing, on that student's own calendar, using a deterministic event id (`sha256(user_id:date:meal_slot)`, already a valid Calendar-id charset).
+- **Conflict** → search the rest of the mess's window for a free slot; found → schedule there.
+- **No alternate slot either** → still create the event (Calendar stays the single interface), titled `[Conflict] ... — please rearrange`, `conflict_resolved: false`, so the student sees it rather than the meal silently vanishing.
+- A retry after a mid-request crash (event created, claim row never updated) is recovered by treating Calendar's `409` on the same deterministic id as success, not a duplicate.
 
 ### 5. Calendar event
 
-Kept short and useful. Example:
+Kept short, per SKILL.md's original design principle — Calendar is the actual interface, not a separate screen. Example:
 
-> **Today's mess picks:** Paneer Tikka, Dal Makhani
-> Based on your preferences.
+> **Top picks: Paneer Tikka [Aahar] 4.2, Dal Makhani [Rasoi] 4.0**
 
-Includes the selected meal(s) and the relevant mess timing.
+### 6. Feedback — two channels, deliberately asymmetric
 
-### 6. User feedback
+This is the one place the multi-tenant rebuild genuinely changed the *shape* of the design, not just its scale, so it's spelled out precisely:
 
-The student responds to the event with:
-- **YES** — I'll eat this
-- **NO** — I won't eat this
-- **MAYBE** — I'm unsure
-- **Note** (optional) — free text, e.g. "too spicy," "really liked it"
+- **Automated, negative-only** (`agent/jobs/collect_feedback.py`, runs before each Monday's scheduling): for every unresolved past meal, check whether the Calendar event still exists. Deleted/cancelled → apply a decline to its `top_picks`. Still there → **no signal at all** — a student's own RSVP on their own calendar doesn't mean anything, so silence is never read as "liked it."
+- **Manual, both directions** (`/feedback` page): the student can rate a specific past meal — ate it and liked it, ate it and was unsure, or skipped it — with an optional note that Gemini classifies for sentiment (`GeminiSkill.interpret_feedback_note`, the same call the single-user build used, now driven by an explicit page visit instead of an RSVP). **This is the only path that can raise a rating from real experience** — without it, a student who loves every dish the agent recommends would never see that reflected, because the automated channel can only ever push a rating down.
+- Both channels write through the same `MenuPreferenceMatchingSkill.apply_feedback` — the same first-feedback-replaces-estimate, then-delta-adjusts logic as the single-user build, completely unchanged. Only *how* a response reaches that function changed.
 
-Gemini interprets the response and note, and updates the preference data for the **specific food item**:
-- YES → score increases
-- YES + positive note → score increases more
-- NO → score decreases
-- NO + note (e.g. "too spicy") → score decreases; the note can also inform tag-level signal over time
-- MAYBE + note → slight/neutral adjustment
-
-`times_eaten` is tracked alongside score as a **confidence** signal, not a stand-in for sentiment — a single lukewarm response after one meal is genuinely uncertain, not automatically disliked.
+`times_eaten` is still tracked alongside `rating` as a **confidence** signal, not a stand-in for sentiment — a single lukewarm response after one meal is genuinely uncertain, not automatically disliked.
 
 ## Data Model
 
 ```python
 class ExtractedDish(BaseModel):
     name: str
-    mess: str                        # "Rasoi" | "Aahar"
-    meal_slot: str                    # "breakfast" | "lunch" | "evening_snacks" | "dinner" | "sunday_brunch"
-    category: str                      # e.g. "Dal", "Gravy Veg - Jain", "Dessert" - the menu section it was listed under
+    mess: str                         # "Rasoi" | "Aahar" | "Both"
+    meal_slot: str                     # "breakfast" | "lunch" | "evening_snacks" | "dinner" | "sunday_brunch"
+    category: Optional[str]            # the menu section it was listed under
+    day: Optional[str]                 # "monday".."sunday" — the board is a weekly rotating menu
 
 class MenuIntake(BaseModel):
     date: date
-    source_image_id: str            # Drive file id for the scanned menu image
-    extracted_items: list[ExtractedDish]   # structured extraction, not just raw names
-    processed: bool                   # true once matching has run against this record
+    source_image_id: str              # sha256 of the uploaded photo — the photo itself is never stored
+    extracted_items: list[ExtractedDish]
 
 class KnownDish(BaseModel):
-    name: str                         # normalized exact-match key
+    name: str
     tags: list[str]
-    score: float                       # running score, adjusted by feedback over time
-    times_eaten: int                    # confidence signal, separate from score
-    last_response: str | None           # "yes" | "no" | "maybe" | None
-    last_note: str | None
+    rating: float
+    times_eaten: int
+    last_response: Optional[str]
+    last_note: Optional[str]
     last_seen: date
 
 class UserPreferences(BaseModel):
-    user_id: str
+    user_id: str                       # a Postgres users.id (UUID), not a hardcoded slug
     dietary_restrictions: list[str]
     skip_meal_slots: list[str]
     known_dishes: list[KnownDish]
-    tag_weights: dict[str, float]        # derived - recompute from known_dishes each run
-
-class MessTiming(BaseModel):
-    meal_slot: str                        # "breakfast" | "lunch" | "dinner"
-    start_time: time
-    end_time: time
+    tag_weights: dict[str, float]       # derived — never persisted
 
 class ScoredDish(BaseModel):
-    name: str
-    score: float
-    source: str                            # "known_dish" | "tag_weight_estimate" | "no_data"
-    decision: str                           # "eat" | "skip"
+    name: str; mess: str; tags: list[str]; score: float
+    source: str                          # "known_dish" | "known_dish_fuzzy" | "tag_weight_estimate" | "no_data"
+    decision: str                        # "eat" | "skip"
 
 class ScheduledMeal(BaseModel):
-    date: date
-    meal_slot: str
+    date: date; meal_slot: str
     selected_items: list[str]
-    calendar_event_id: str | None
-    scheduled_time: time                    # may differ from default mess_timing if conflict resolved
+    top_picks: list[str]                  # subset actually named in the event description
+    calendar_event_id: Optional[str]
+    scheduled_time: Optional[time]
     conflict_resolved: bool
-
-class MealResponse(BaseModel):
-    calendar_event_id: str
-    response: str                            # "yes" | "no" | "maybe"
-    note: str | None
-    processed: bool                           # true once known_dishes has been updated from this response
 ```
 
-## Open Questions — decide before building
+Persisted in Postgres now, not per-user JSON files — see `agent/models_db.py` for the exact table shapes (`users`, `oauth_tokens`, `preferences`, `menu_intake`, `pending_menu_uploads`, `scheduled_meals`) and `agent/repository.py` for the only code that touches them.
 
-1. **Fuzzy-match similarity threshold.** How close does an extracted name need to be to an existing `known_dishes` entry to count as the same dish (vs. a genuinely new one)? Needs a concrete threshold (e.g. edit-distance cutoff), not left as "close enough."
-2. **Exact score-adjustment sizes.** Define the actual increments (e.g. YES = +1, YES + positive note = +2) before coding rather than inventing them ad hoc inside the function.
-3. **Repeated-conflict fallback.** If step 4's alternate-slot check also finds everything taken, what happens — schedule anyway with a warning, skip the day, or notify the student to resolve manually?
-4. **Dish with zero recognized tags.** A new dish whose tags have never appeared before has nothing to average for `tag_weights`. Recommend flagging it explicitly as "new, no data yet" rather than guessing a neutral score.
-5. **Does an estimated score ever get replaced by real feedback?** Recommend: the first real YES/NO/MAYBE response replaces the `tag_weight_estimate` outright, since direct signal is stronger than an inference.
-6. **Which mess gets scored when both Rasoi and Aahar are options?** With two messes serving the same meal slot at the same time, does the agent score both and recommend the better one, only ever check one specific mess, or let the student pick a default? Not yet decided — needs an answer before the matching logic can run against real dual-mess data.
-7. **How does "fortnightly" Sunday brunch actually get detected?** `mess_structure.json` flags this as unresolved — fortnightly requires knowing a reference start date to count from (e.g. "every 2nd Sunday from Sept 1"), which hasn't been defined yet. Needs a concrete rule before the agent can know which Sundays are brunch days vs. normal breakfast/lunch days.
+## Multi-tenancy notes
 
-## Sample Data (for testing the matching/scoring logic before wiring up Gemini/Drive/Calendar)
+- **Identity/access:** Google Sign-In (`agent/web/auth.py`) with PKCE + CSRF state, verifying the ID token's `email_verified`/`hd` claims and that Calendar scope was actually granted — not just checking the email string client-side.
+- **Isolation:** every table keyed by `user_id` except the deliberately shared `menu_intake`; `MenuPreferenceMatchingSkill` still only ever operates on the one `UserPreferences` object it's handed, so there's no code path where one student's data can leak into another's scoring.
+- **Idempotency:** the `scheduled_meals` unique constraint plus deterministic Calendar event ids are what make "the cron job ran, and someone also just confirmed a late upload for the same week" safe — both can only ever produce one event per student/date/slot.
+- **Refresh tokens** are encrypted at rest (`agent/crypto.py`, `MultiFernet`) — a database dump doesn't hand over live Calendar access to the whole college.
 
-**Preferences** (`preferences_u001.json`) — real file, 17 rated dishes covering fruits, bread items, breakfast items (aloo bhaji, puri, upma, sabudana khichdi, poha), desserts (mousse, slice cake liked; jalebi, custard, payasam disliked), milk (disliked), and staples (chana, curd, rice — liked). `tag_weights` verified computationally against `known_dishes`. Note `skip_meal_slots` is now empty — no meal is being skipped by default.
+## Design decisions — resolved (single-user build, still true, unchanged by the rebuild)
 
-**Mess Timings** (`mess_timings.json`) — the real meal windows:
+1. **Fuzzy-match threshold: 0.85** on normalized `difflib.SequenceMatcher`, exact match checked first.
+2. **Score deltas:** YES +1.0 (first feedback ever: baseline 4.0) · NO −1.0 (baseline 1.5) · MAYBE +0.0 (baseline 2.5), with a ±0.5 note-sentiment bonus on top, clamped to `[0.0, 5.0]`.
+3. **No alternate slot either** → still create the event, flagged, rather than silently failing.
+4. **Zero recognized tags** → `no_data`, score 0.0, decision `skip` — no guessing.
+5. **First real feedback replaces the tag-weight estimate outright**; later feedback nudges by the deltas above.
+6. **Both messes scored together** for a given slot, never one picked over the other — each `ScoredDish` carries which mess it's from.
+7. **`meal_slot` is passed explicitly**, never auto-derived from the calendar weekday — `weekly_run.py`'s per-date/per-slot loop supplies it from what's actually in that date's `menu_intake`, so nothing has to guess which weeks are `sunday_brunch` weeks.
 
-| Meal | Window |
-|---|---|
-| Breakfast | 7:30 AM – 9:30 AM |
-| Lunch | 11:30 AM – 3:00 PM |
-| Snack | 5:00 PM – 6:00 PM |
-| Dinner | 7:30 PM – 10:00 PM |
+## What Makes This Still Agentic (per `plan.md` §7)
 
-**Simulated Gemini extraction output** (`menu_intake_sample.json`) — stands in for what the Gemini API would return from reading a real image, including one deliberately "noisy" name to test the fuzzy-match safeguard:
+`plan.md`'s original CampusBite plan defined five properties that separate an agentic system from "an app with a few screens." The build here only ever implemented the menu-matching + calendar-scheduling piece of that plan (the budget/perishable and social-invite skills were out of scope from the start — an accepted, pre-existing scope reduction, not something the multi-tenant rebuild changed). Within that narrower scope, here's how each property held up through the rebuild:
 
-```json
-{
-  "date": "2026-09-18",
-  "source_image_id": "sample_image_001",
-  "extracted_items": ["Curd Rice", "Rajma Chawal", "paneer tkka", "Mushroom Risotto"]
-}
-```
-
-| Extracted name | Expected handling |
-|---|---|
-| Curd Rice | Exact match → known score |
-| Rajma Chawal | Exact match → known score |
-| paneer tkka | Should fuzzy-match to "Paneer Tikka" if that's in `known_dishes` — tests Open Question 1 |
-| Mushroom Risotto | Genuinely new, zero recognized tags → `no_data` — tests Open Question 4 |
-
-## What to build first, in order
-
-1. Decide the five Open Questions above — write the answers directly into this file before coding.
-2. Build the fuzzy-name-matching safeguard as its own small, independently testable function — confirm "paneer tkka" correctly resolves to "Paneer Tikka" using your chosen threshold.
-3. Build the matching/scoring logic (steps 2-3) against `menu_intake_sample.json` and the real preferences file — no live Gemini, Drive, or Calendar calls yet. Confirm each sample row scores as the table above predicts.
-4. Build the calendar-conflict check and alternate-slot logic (step 4) against a small set of mock calendar events.
-5. Build the feedback-processing logic (step 6) — given a sample YES/NO/MAYBE + note, confirm `known_dishes` updates correctly.
-6. Only once steps 2-5 are all tested and passing, wire up the real Gemini API image read, real Drive access, and real Calendar API calls.
+1. **Reasons across signals together, not one at a time.** Every scheduling decision still combines a hard dietary exclude, a taste score, a calendar-conflict check, and a skip-slot behavior rule into *one* outcome — schedule, schedule-with-a-flag, or don't. The rebuild added a second layer of this at the week level: `schedule_week()` combines "which dates have a menu," "does this student's token still work," and "did this student opt out of this slot" into one of *missing / partial / scheduled* per student, not three separate checks the student has to piece together.
+2. **Makes a judgment call, not a lookup.** The conflict-resolution priority order (default slot → alternate slot → flag) and the eat/skip threshold are untouched. The missing/partial/full menu classification is a new instance of the same pattern — a priority-ordered decision, not a fixed script.
+3. **Works toward a goal, not just reacting to a click.** This is *stronger* after the rebuild, not just preserved: the single-user build required someone to run a CLI command per meal, per day. Now a Railway Cron job schedules every active student's whole week with no one asking it to, every Monday, and a late menu upload triggers the same logic in the background without waiting for the next cron tick.
+4. **Keeps its parts separate on purpose.** `MenuPreferenceMatchingSkill` is still completely pure — every method takes a `UserPreferences` object explicitly, touches no file, no Calendar, no database. `GoogleCalendarSkill`, `GeminiSkill`, and the new `Repository` are all injected into the orchestrator (`ReActMealAgent`), which only ever calls each one's final-answer method, never reaches into how any of them work internally. This is enforced by the actual code structure, not just claimed in this document.
+5. **Updates itself.** This is the property the rebuild put at real risk, worth stating honestly: removing the single-attendee RSVP (necessary for multi-tenancy) initially left only a negative signal (`collect_feedback.py`'s cancellation check) — a preference model that could only ever get *more pessimistic* over time, never actually learn what a student liked. The `/feedback` page (see "Feedback" above) is what restores the positive direction, and it's the only production caller left of `GeminiSkill.interpret_feedback_note`. Without it, this property would only be half-true.

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Upload menu — meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    label { display: block; margin: 16px 0 4px; font-weight: 600; }
+    input { padding: 8px; }
+    button { margin-top: 20px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">&larr; Home</a></nav>
+  <h1>Upload this week's mess menu</h1>
+  <p>One photo of the whole week's board — Gemini reads it and everyone's meals get scheduled from it.
+     JPEG, PNG, or WEBP, up to 10&nbsp;MB.</p>
+
+  <form method="post" action="/menu/upload" enctype="multipart/form-data">
+    <label for="week_start">Week starting (Monday)</label>
+    <input type="date" id="week_start" name="week_start" value="{{ default_week_start.isoformat() }}" required>
+
+    <label for="image">Menu photo</label>
+    <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/webp" required>
+
+    <button type="submit">Extract menu</button>
+  </form>
+</body>
+</html>

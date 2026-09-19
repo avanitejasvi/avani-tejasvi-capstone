@@ -1,0 +1,18 @@
+# Configures this repo's primary "web" service. Two more Railway services
+# point at this same repo but aren't defined here — Railway's schema doesn't
+# express independently-scheduled multi-service setups in one railway.toml,
+# so they're created via the dashboard:
+#   - "postgres": Railway's managed Postgres plugin. Injects DATABASE_URL.
+#   - "cron": same repo/build, start command overridden to
+#     `python -m agent.jobs.run_all`, with a Cron Schedule of `0 4 * * 1`
+#     (04:00 UTC = 9:30am IST, Mondays) set in that service's Settings tab.
+#     No Volume on either service — see agent/web/routes_menu.py, images are
+#     never persisted.
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "pip install -r agent/requirements.txt"
+
+[deploy]
+startCommand = "uvicorn agent.web.app:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=\"*\""
+restartPolicyType = "ON_FAILURE"

@@ -1,6 +1,11 @@
 {
   "date": "2026-09-18",
   "source_image_id": "sample_image_001",
-  "extracted_items": ["Curd Rice", "Rajma Chawal", "paneer tkka", "Mushroom Risotto"],
+  "extracted_items": [
+    {"name": "Curd Rice", "mess": "Aahar", "meal_slot": "lunch", "category": "Rice"},
+    {"name": "Rajma Chawal", "mess": "Rasoi", "meal_slot": "lunch", "category": "Bowl"},
+    {"name": "paneer tkka", "mess": "Aahar", "meal_slot": "lunch", "category": "Gravy Veg"},
+    {"name": "Mushroom Risotto", "mess": "Rasoi", "meal_slot": "lunch", "category": "Bowl"}
+  ],
   "processed": false
 }

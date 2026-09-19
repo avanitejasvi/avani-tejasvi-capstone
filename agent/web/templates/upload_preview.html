@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Confirm menu — meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    .warn { background: #fff4e5; border: 1px solid #f0b429; padding: 12px 16px; border-radius: 8px; }
+    ul { columns: 2; }
+    button { margin-top: 20px; padding: 8px 16px; }
+    a.cancel { margin-left: 12px; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">&larr; Home</a></nav>
+  <h1>Review before confirming</h1>
+  <p>Week of <strong>{{ week_start.isoformat() }}</strong> — Gemini extracted <strong>{{ item_count }}</strong> dish(es) across the week.</p>
+
+  <p>Sample of what was read:</p>
+  <ul>
+    {% for name in sample_names %}<li>{{ name }}</li>{% endfor %}
+  </ul>
+
+  {% if existing_dates %}
+  <div class="warn">
+    These dates already have a menu: {{ existing_dates | join(", ") }}.
+    Confirming below will <strong>overwrite</strong> them unless you leave the box unticked
+    (in which case the upload is rejected — go back and pick a different week).
+  </div>
+  {% endif %}
+
+  <form method="post" action="/menu/upload/confirm">
+    <input type="hidden" name="pending_id" value="{{ pending_id }}">
+    {% if existing_dates %}
+    <label><input type="checkbox" name="overwrite"> Overwrite existing days</label>
+    {% endif %}
+    <button type="submit">Confirm and schedule this week</button>
+    <a class="cancel" href="/menu/upload">Cancel</a>
+  </form>
+</body>
+</html>

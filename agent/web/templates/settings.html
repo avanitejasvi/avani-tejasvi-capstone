@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Settings — meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    label { display: block; margin: 16px 0 4px; font-weight: 600; }
+    input[type=text] { width: 100%; padding: 8px; box-sizing: border-box; }
+    .slot { display: block; margin: 4px 0; font-weight: normal; }
+    button { margin-top: 20px; padding: 8px 16px; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">&larr; Home</a></nav>
+  <h1>Settings</h1>
+  <p>These apply to every meal the weekly job schedules for you, {{ user.display_name or user.email }}.</p>
+
+  <form method="post" action="/settings">
+    <label for="dietary_restrictions">Dietary restrictions (comma-separated — e.g. "non-vegetarian, egg")</label>
+    <input type="text" id="dietary_restrictions" name="dietary_restrictions"
+           value="{{ prefs.dietary_restrictions | join(', ') }}">
+
+    <label>Meal slots to always skip</label>
+    {% for slot in meal_slots %}
+    <label class="slot">
+      <input type="checkbox" name="skip_meal_slots" value="{{ slot }}"
+             {% if slot in prefs.skip_meal_slots %}checked{% endif %}>
+      {{ slot.replace('_', ' ') }}
+    </label>
+    {% endfor %}
+
+    <label for="llm_provider">Use your own AI key for feedback rating (optional)</label>
+    <p style="font-weight: normal; margin: 0 0 8px;">
+      {% if current_llm_provider %}
+        Currently using your own <strong>{{ current_llm_provider }}</strong> key.
+        Leave the key field blank to keep it, or tick "remove" below to clear it.
+      {% else %}
+        Not set — feedback rating uses a shared key by default. Add your own below if you'd rather it use yours.
+      {% endif %}
+    </p>
+    <select name="llm_provider">
+      {% for p in llm_providers %}
+      <option value="{{ p }}" {% if p == current_llm_provider %}selected{% endif %}>{{ p }}</option>
+      {% endfor %}
+    </select>
+    <input type="text" id="llm_api_key" name="llm_api_key" placeholder="paste your API key here">
+    <label class="slot"><input type="checkbox" name="remove_llm_key"> Remove my saved key</label>
+
+    <button type="submit">Save</button>
+  </form>
+</body>
+</html>

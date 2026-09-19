@@ -1,0 +1,179 @@
+{
+  "user_id": "u001",
+  "version": "2.1",
+  "dietary_restrictions": [],
+  "skip_meal_slots": [],
+  "rating_scale": {"1":"strong dislike/avoid","2":"dislike","3":"neutral/unknown","4":"like","5":"strong like"},
+
+  "known_dishes": [
+    {"name":"Fruits (general)","tags":["fruit"],"rating":4},
+    {"name":"Banana","tags":["fruit"],"rating":2},
+    {"name":"Bread","tags":["bread"],"rating":4},
+    {"name":"Aloo Bhaji","tags":["potato","breakfast","bhaji"],"rating":5},
+    {"name":"Puri","tags":["fried","breakfast"],"rating":4},
+    {"name":"Upma","tags":["breakfast","semolina"],"rating":4},
+    {"name":"Sabudana Khichdi","tags":["breakfast","tapioca","khichdi"],"rating":5},
+    {"name":"Mousse","tags":["dessert","creamy"],"rating":5},
+    {"name":"Slice Cake","tags":["dessert","cake"],"rating":5},
+    {"name":"Jalebi","tags":["dessert","fried","sweet"],"rating":1},
+    {"name":"Custard","tags":["dessert","milk-based"],"rating":1},
+    {"name":"Payasam","tags":["dessert","milk-based"],"rating":1},
+    {"name":"Milk","tags":["milk-based","beverage"],"rating":1},
+    {"name":"Poha","tags":["breakfast","rice-flakes","light"],"rating":5},
+    {"name":"Chana","tags":["dal","legume","chickpea"],"rating":5},
+    {"name":"Curd","tags":["dairy","light"],"rating":5},
+    {"name":"Rice","tags":["rice","light"],"rating":5},
+    {"name":"Dal (general)","tags":["dal"],"rating":3},
+    {"name":"Rajma","tags":["dal","legume"],"rating":5},
+    {"name":"Carrot","tags":["vegetable"],"rating":4},
+    {"name":"Cucumber","tags":["vegetable"],"rating":4},
+    {"name":"Onion","tags":["vegetable"],"rating":4},
+    {"name":"Gulab Jamun","tags":["dessert","fried","sweet"],"rating":5},
+    {"name":"Lemon Juice","tags":["beverage","citrus"],"rating":4},
+    {"name":"Khichdi","tags":["rice","dal","comfort"],"rating":5},
+    {"name":"Paneer (general)","tags":["paneer"],"rating":5},
+    {"name":"Chole","tags":["legume","chickpea","gravy"],"rating":5},
+    {"name":"Samosa","tags":["fried","snack"],"rating":5},
+    {"name":"Chaat","tags":["snack","tangy","street-food"],"rating":5},
+    {"name":"Hakka Noodles","tags":["noodles","chinese","fried"],"rating":1},
+    {"name":"Manchurian (general)","tags":["chinese","fried","gravy"],"rating":1},
+    {"name":"Tang","tags":["beverage","powdered-drink"],"rating":2},
+    {"name":"Pav","tags":["bread","bun"],"rating":5},
+    {"name":"Soup (general)","tags":["soup"],"rating":2},
+    {"name":"Rasam","tags":["soup","tangy","south-indian"],"rating":5},
+    {"name":"Misal Pav","tags":["pav","breakfast","snack"],"rating":5},
+    {"name":"Fryums","tags":["fried","snack"],"rating":5},
+    {"name":"Garlic Crostini","tags":["bread","garlic","snack"],"rating":5},
+    {"name":"Bread Sticks","tags":["bread","snack"],"rating":5},
+    {"name":"Awadhi Paneer and Vegetable Pulao","tags":["paneer","rice","pulao","vegetable"],"rating":5},
+    {"name":"Vegetable Pulao","tags":["rice","pulao","vegetable"],"rating":5},
+    {"name":"Surti Khawsa","tags":["noodles","coconut","spicy"],"rating":5},
+    {"name":"Raw Banana 65","tags":["banana","fried"],"rating":1},
+    {"name":"Chatpata Dal Wada","tags":["dal","fried","snack"],"rating":1},
+    {"name":"Pal Payassam","tags":["dessert","milk-based"],"rating":1}
+  ],
+
+  "explicit_combinations": {
+    "liked": [
+      ["Rice","Curd"], ["Paneer","Rice"], ["Rajma","Rice"], ["Phulka","Paneer"],
+      ["Chana","Puri"], ["Chana","Pav","Bhaji"], ["Misal","Pav"], ["Fryums","Rice"]
+    ],
+    "disliked": [
+      ["Pav","Soya"], ["Pav","Soya Bean"]
+    ]
+  },
+
+  "pairing_rules": {
+    "Rice":{"like_with":["Curd","Paneer","Rajma","Chana","Fryums","Vegetables","Pulao"],"avoid_with":[]},
+    "Pav":{"like_with":["Chana","Bhaji","Misal"],"avoid_with":["Soya","Soya Bean"]},
+    "Paneer":{"like_with":["Rice","Pulao","Phulka","Phula"],"avoid_with":[]},
+    "Chana":{"like_with":["Rice","Puri","Pav","Bhaji","Chaat"],"avoid_with":[]},
+    "Curd":{"like_with":["Rice","Chaat","Raita"],"avoid_with":[]}
+  },
+
+  "learned_from_both_weeks": {
+    "strong_likes": [
+      "rice-based meals","rice + dal/legume","rice + curd","rice + paneer","rajma","chana/chole",
+      "paneer dishes","pav with chana/bhaji/misal","poha","khichdi","chaat","bread/garlic snacks",
+      "fryums","rasam","vegetable/light sides","tangy/citrus flavours"
+    ],
+    "strong_dislikes": [
+      "banana-based dishes","milk as a drink","milk-based desserts","custard","payasam/kheer",
+      "jalebi","hakka noodles","fried noodles","manchurian","dal wada","raw banana 65"
+    ],
+    "context_dependent": ["fried","dal","gravy","dessert","sweet","soup","Chinese","soya"],
+    "exceptions": [
+      "fried is not universally negative: Puri, Samosa, Fryums and Gulab Jamun are liked",
+      "dal is not universally negative: generic Dal is neutral but Chana, Rajma and Khichdi are strongly liked",
+      "gravy is neutral/context-dependent",
+      "Pav is strongly liked except with Soya/Soya Bean",
+      "Surti Khawsa is a known positive exception despite containing noodles",
+      "Rasam is a strong positive exception despite soup being generally disliked"
+    ]
+  },
+
+  "menu_inference_rules": {
+    "high_likelihood": [
+      "Pongal","Ven Pongal","Dahi Wada","Dahi Kadhi","Boondi Raita","Taak","Masala Chaas","Phulka",
+      "Poori Bhaji","Pav Bhaji","Chana Chaat","Dahi Papadi Chaat","Ragda Chaat","Papadi Chaat",
+      "Masala Bhel","Peanut Chana Chaat","Tindli Chana","Black Chana Masala","Kadala Curry","Paneer Mutter",
+      "Paneer Kadai","Paneer Korma","Veg Paneer Kofta Curry","Punjabi Chole","Chole Masala","Ajwain Chole",
+      "Chana Gassi","Three Beans Masala","Basil and Oregano Rice","Lemon Pepper Rice","Jollof Rice",
+      "Mexican Green Rice","Coconut Rice","Jeera Rice","Plain Rice","Steam Rice","Masala Bhat",
+      "Street Tawa Pulao","Green Peas Rice","Corn Pulao","Garlic Bread","Coffee Slice Cake",
+      "Crunchy Lemon Mousse","Coconut and White Chocolate Mousse","Limbu Pani","Jaljeera"
+    ],
+    "low_likelihood": [
+      "Manchow Soup","Hot Garlic Soup","Sweet Corn Soup","Veg Chowder Soup","Minestroni Soup","Noodles Soup",
+      "Veg Clear Soup","Veg Manchurian","Hakka Noodles","Veg Maggi","Spicy Chilli Garlic Noodles","Fried Noodles",
+      "Raw Banana 65","Crispy Fried Raw Bananas","Banana Jalfrezi","Dum Banana","Jalebi Cheesecake","Rice Kheer",
+      "Beetroot Rice Kheer","Arroz Con Leche","Rasmalai","Fruit Custard","Banana Custard","Sheer Kurma",
+      "Mango Tang","Soya Bean and Capsicum Chettinad"
+    ],
+    "unknown_starting_point": [
+      "Cornflakes","Wheat Flakes","Choco Flakes","Tea","Coffee","Bournvita","Medu Wada","Idly","Uttapam",
+      "Sambar","Dhokla","Kothimbir Wadi","Pizza","Punugulu","Kimchi","Shahi Tukda","Moong Dal Halwa",
+      "Dry Fruit Sheera","Malpua","Lancha","Motichur Ladoo"
+    ]
+  },
+
+  "scoring": {
+    "priority_order": [
+      "dietary restrictions","skip meal slot","hard negative combination","exact dish","exact combination",
+      "pairing rule","strong ingredient preference","meal balance","tag fallback","repetition","exploration"
+    ],
+    "weights": {
+      "exact_dish":1.0,"exact_combination":1.0,"pairing":0.9,"strong_ingredient":0.75,
+      "meal_balance":0.3,"tag_fallback":0.5,"exploration":0.15
+    },
+    "hard_rules": [
+      "Hard-avoid combinations override positive individual ratings.",
+      "Exact dish ratings override tag averages.",
+      "Exact combination ratings override individual dish ratings.",
+      "Do not apply a blanket fried-food penalty.",
+      "Do not apply a blanket gravy penalty.",
+      "Use tag weights only as fallback for unseen dishes."
+    ]
+  },
+
+  "meal_balance": {
+    "prefer": ["rice + liked legume","rice + curd","rice + paneer","rice + vegetable","pav + chana/bhaji/misal","chaat + curd/chana"],
+    "penalize": ["multiple disliked items","multiple highly similar fried items","hard-negative combination"],
+    "bonus": "small bonus for a balanced meal containing a preferred base + preferred protein/legume + light side"
+  },
+
+  "repetition": {
+    "enabled": true,
+    "penalty": {"same_day":"strong","previous_day":"medium","2_to_3_days":"small","4_plus_days":"none"},
+    "purpose": "Prefer variety when multiple meals score similarly."
+  },
+
+  "exploration": {
+    "enabled": true,
+    "target_share": "15-20%",
+    "rule": "Allow an unfamiliar dish when it matches several positive ingredients/tags and contains no hard negative signal."
+  },
+
+  "confidence": {
+    "high": "Exact dish or exact combination was explicitly rated.",
+    "medium": "Untested dish strongly matches several known preferences.",
+    "low": "Little direct evidence; mostly tag-based inference."
+  },
+
+  "tag_weights": {
+    "recompute_each_run": true,
+    "source": "known_dishes",
+    "fallback_only": true,
+    "never_hand_maintain": true,
+    "context_dependent_tags": ["fried","dal","gravy","dessert","sweet","soup","Chinese"]
+  },
+
+  "output_rules": {
+    "max_recommendations": 3,
+    "show_score": true,
+    "show_confidence": true,
+    "show_short_reason": true,
+    "distinguish_explicit_from_inferred": true,
+    "never_claim_an_inferred_dish_was_explicitly_rated": true
+  }
+}

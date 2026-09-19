@@ -1,81 +1,1825 @@
 {
-  "comment": "known_dishes is checked by EXACT NAME first (handles cases like liking puri but hating jalebi, both fried; or liking chana/rajma/khichdi but finding generic dal 'eh'; or liking chole but hating manchurian, both gravy dishes). tag_weights is the fallback used only for dishes not yet in known_dishes, recomputed from known_dishes each run - don't hand-maintain it. skip_meal_slots is a behavior rule, not a taste preference - handle it before scoring even runs. NOTE: 'dal' lands at 4.5 (high) despite a generic 'eh' entry, because three named dal dishes (Chana, Rajma, Khichdi) are liked and outweigh the one neutral point - expected tag-averaging behavior, not an error, but means a brand-new unnamed dal dish is guessed as probably-good. Similarly, 'gravy' dropped to 3.0 (neutral) because Manchurian (disliked, gravy-based) pulls against Chole (liked, gravy-based) - a new unnamed gravy dish now gets a neutral guess rather than an optimistic one. 'fried' sits at 2.83 (leaning negative) for the same reason - Puri/Gulab Jamun/Samosa liked, but Jalebi/Hakka Noodles/Manchurian disliked.",
   "user_id": "u001",
   "dietary_restrictions": [],
   "skip_meal_slots": [],
   "known_dishes": [
-    {"name": "Fruits (general)", "tags": ["fruit"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Banana", "tags": ["fruit"], "rating": 2, "last_seen": "2026-09-18"},
-    {"name": "Bread", "tags": ["bread"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Aloo Bhaji", "tags": ["potato", "breakfast", "bhaji"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Puri", "tags": ["fried", "breakfast"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Upma", "tags": ["breakfast", "semolina"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Sabudana Khichdi", "tags": ["breakfast", "tapioca"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Mousse", "tags": ["dessert", "creamy"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Slice Cake", "tags": ["dessert", "cake"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Jalebi", "tags": ["dessert", "fried", "sweet"], "rating": 1, "last_seen": "2026-09-18"},
-    {"name": "Custard", "tags": ["dessert", "milk-based"], "rating": 1, "last_seen": "2026-09-18"},
-    {"name": "Payasam", "tags": ["dessert", "milk-based"], "rating": 1, "last_seen": "2026-09-18"},
-    {"name": "Milk", "tags": ["milk-based"], "rating": 1, "last_seen": "2026-09-18"},
-    {"name": "Poha", "tags": ["breakfast", "rice-flakes", "light"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Chana", "tags": ["dal", "legume"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Curd", "tags": ["dairy", "light"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Rice", "tags": ["rice", "light"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Dal (general)", "tags": ["dal"], "rating": 3, "last_seen": "2026-09-18"},
-    {"name": "Rajma", "tags": ["dal", "legume"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Carrot", "tags": ["vegetable"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Cucumber", "tags": ["vegetable"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Onion", "tags": ["vegetable"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Gulab Jamun", "tags": ["dessert", "fried", "sweet"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Lemon Juice", "tags": ["beverage", "citrus"], "rating": 4, "last_seen": "2026-09-18"},
-    {"name": "Khichdi", "tags": ["rice", "dal", "comfort"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Paneer (general)", "tags": ["paneer"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Chole", "tags": ["legume", "chickpea", "gravy"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Samosa", "tags": ["fried", "snack"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Chaat", "tags": ["snack", "tangy", "street-food"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Hakka Noodles", "tags": ["noodles", "chinese", "fried"], "rating": 1, "last_seen": "2026-09-18"},
-    {"name": "Manchurian (general)", "tags": ["chinese", "fried", "gravy"], "rating": 1, "last_seen": "2026-09-18"},
-    {"name": "Tang (drink)", "tags": ["beverage", "powdered-drink"], "rating": 2, "last_seen": "2026-09-18"},
-    {"name": "Pav", "tags": ["bread", "bun"], "rating": 5, "last_seen": "2026-09-18"},
-    {"name": "Soup (general)", "tags": ["soup"], "rating": 2, "last_seen": "2026-09-18"},
-    {"name": "Rasam", "tags": ["soup", "tangy", "south-indian"], "rating": 5, "last_seen": "2026-09-18"}
+    {
+      "name": "Fruits (general)",
+      "tags": [
+        "fruit"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Banana",
+      "tags": [
+        "fruit"
+      ],
+      "rating": 2.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Bread",
+      "tags": [
+        "bread"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Aloo Bhaji",
+      "tags": [
+        "potato",
+        "breakfast",
+        "bhaji"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Puri",
+      "tags": [
+        "fried",
+        "breakfast"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Upma",
+      "tags": [
+        "breakfast",
+        "semolina"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Sabudana Khichdi",
+      "tags": [
+        "breakfast",
+        "tapioca"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Mousse",
+      "tags": [
+        "dessert",
+        "creamy"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Slice Cake",
+      "tags": [
+        "dessert",
+        "cake"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Jalebi",
+      "tags": [
+        "dessert",
+        "fried",
+        "sweet"
+      ],
+      "rating": 1.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Custard",
+      "tags": [
+        "dessert",
+        "milk-based"
+      ],
+      "rating": 1.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Payasam",
+      "tags": [
+        "dessert",
+        "milk-based"
+      ],
+      "rating": 1.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Milk",
+      "tags": [
+        "milk-based"
+      ],
+      "rating": 1.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Poha",
+      "tags": [
+        "breakfast",
+        "rice-flakes",
+        "light"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Chana",
+      "tags": [
+        "dal",
+        "legume"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Curd",
+      "tags": [
+        "dairy",
+        "light"
+      ],
+      "rating": 5.0,
+      "times_eaten": 2,
+      "last_response": "yes",
+      "last_note": "had lunch at rasoi and it was good. all items",
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Rice",
+      "tags": [
+        "rice",
+        "light"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Dal (general)",
+      "tags": [
+        "dal"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Rajma",
+      "tags": [
+        "dal",
+        "legume"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Carrot",
+      "tags": [
+        "vegetable"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Cucumber",
+      "tags": [
+        "vegetable"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Onion",
+      "tags": [
+        "vegetable"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Gulab Jamun",
+      "tags": [
+        "dessert",
+        "fried",
+        "sweet"
+      ],
+      "rating": 4.0,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "had gulab jamin and dal khichdi. these werent listed",
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Lemon Juice",
+      "tags": [
+        "beverage",
+        "citrus"
+      ],
+      "rating": 4.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Khichdi",
+      "tags": [
+        "rice",
+        "dal",
+        "comfort"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Paneer (general)",
+      "tags": [
+        "paneer"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Chole",
+      "tags": [
+        "legume",
+        "chickpea",
+        "gravy"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Samosa",
+      "tags": [
+        "fried",
+        "snack"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Chaat",
+      "tags": [
+        "snack",
+        "tangy",
+        "street-food"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Hakka Noodles",
+      "tags": [
+        "noodles",
+        "chinese",
+        "fried"
+      ],
+      "rating": 1.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Manchurian (general)",
+      "tags": [
+        "chinese",
+        "fried",
+        "gravy"
+      ],
+      "rating": 1.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Tang (drink)",
+      "tags": [
+        "beverage",
+        "powdered-drink"
+      ],
+      "rating": 2.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Pav",
+      "tags": [
+        "bread",
+        "bun"
+      ],
+      "rating": 4.5,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "papdi chat was nice and i like it. pav bhaji is my fav",
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Soup (general)",
+      "tags": [
+        "soup"
+      ],
+      "rating": 2.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Rasam",
+      "tags": [
+        "soup",
+        "tangy",
+        "south-indian"
+      ],
+      "rating": 5.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Wheat Flakes",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Hot & Cold Milk",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Tea",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Coffee/ Bournvita",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Fruit Juice",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Brown Bread",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "White Bread",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Butter",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Mixed Fruit Jam",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Medu Wada",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Masala Poha",
+      "tags": [
+        "gravy"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Sambar",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Tomato Chutney",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Kachumber Salad with Roasted Cumin",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Mix Veg Baby Samosa",
+      "tags": [
+        "starter"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Awadhi Paneer and Vegetable Pulao",
+      "tags": [
+        "bowl"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Dal Bukhara",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Papad",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Moong Dal Halwa",
+      "tags": [
+        "dessert"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Beverage of the Day",
+      "tags": [
+        "beverage"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Sweet Corn Veg Soup",
+      "tags": [
+        "soup"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": "didnt eat at mess at all",
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Tandoori Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Dahi Wada",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "N/L",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Turai Masala",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Paneer Mutter",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Mix Veg Handi",
+      "tags": [
+        "dry",
+        "veg",
+        "jain"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Dal Adraki",
+      "tags": [
+        "dal"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": "didnt eat at mess at all",
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Jeera Rice",
+      "tags": [
+        "rice"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": "didnt eat at mess at all",
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Phulka",
+      "tags": [
+        "roti"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Taak",
+      "tags": [
+        "curd"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Mixed pickle",
+      "tags": [
+        "pickle"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Roasted papad",
+      "tags": [
+        "papad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Coffee",
+      "tags": [
+        "beverage"
+      ],
+      "rating": 2.5,
+      "times_eaten": 4,
+      "last_response": "no",
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Peanut Chana Chat",
+      "tags": [
+        "main"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "N/A",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Hot Garlic Soup",
+      "tags": [
+        "soup"
+      ],
+      "rating": 3.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Mixk Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Corn Cheese Ball",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Tomato Ketchup",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Matki Sprouts Dry",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Dum Aloo Banarasi",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 2.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Dum Banana",
+      "tags": [
+        "gravy",
+        "veg",
+        "jain"
+      ],
+      "rating": 1.33,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Steam Rice",
+      "tags": [
+        "rice"
+      ],
+      "rating": 3.0,
+      "times_eaten": 4,
+      "last_response": "no",
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Dal Fry",
+      "tags": [
+        "dal"
+      ],
+      "rating": 5.0,
+      "times_eaten": 2,
+      "last_response": "yes",
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Tang",
+      "tags": [
+        "drink"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Pickle",
+      "tags": [
+        "pickle"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-15"
+    },
+    {
+      "name": "Choco Flakes",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Idly",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Daliya Upma",
+      "tags": [
+        "dal"
+      ],
+      "rating": 4.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Matki Sample",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Coconut Chutney",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Crunchy Veg Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Raw Banana 65",
+      "tags": [
+        "starter"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Lemon Pepper Rice",
+      "tags": [
+        "bowl"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Soya Bean and Capsicum Chettinad",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Fryums",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Pal Payassam",
+      "tags": [
+        "dessert"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Manchow Soup",
+      "tags": [
+        "soup"
+      ],
+      "rating": 3.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Green Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Potato 65",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Lauki Do Pyaza",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.65,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Chole Masala",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 1.85,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Lauki Masala",
+      "tags": [
+        "dry",
+        "veg",
+        "jain"
+      ],
+      "rating": 0.66,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Dal Tadka",
+      "tags": [
+        "dal"
+      ],
+      "rating": 3.5,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "hard curd, had chole in rasoi. thats not here",
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Plain Rice",
+      "tags": [
+        "rice"
+      ],
+      "rating": 4.0,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "hard curd, had chole in rasoi. thats not here",
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Masala Bhel",
+      "tags": [
+        "main"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Sabz Shorba",
+      "tags": [
+        "soup"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": "steam rice is there most days didnt see rajma here even thou i like rajma",
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Carrot Beet Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Chana Dal Wada",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Green Chutney",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Rajma Masala",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 1.78,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Chilka Wali Green Moong",
+      "tags": [
+        "dal"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": "steam rice is there most days didnt see rajma here even thou i like rajma",
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Jalqeera",
+      "tags": [
+        "drink"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Shahi tukda",
+      "tags": [
+        "sweet"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-16"
+    },
+    {
+      "name": "Cornflakes",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Cucumber Juice",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Batata Wada",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Coconut Chutney/ Curd",
+      "tags": [
+        "curd-based"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Mixed Toppings (broken papdi, roasted peanuts, coriander leaves, mint leaves, chaat masala, black salt, brown onion)",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Chatpata Dal Wada",
+      "tags": [
+        "starter"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Surti Khawsa",
+      "tags": [
+        "bowl"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Fried Noodles",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Jalebi Cheesecake",
+      "tags": [
+        "dessert"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Hot Garlic vegetable Soup",
+      "tags": [
+        "soup"
+      ],
+      "rating": 3.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Mix Veg Pakoda",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Tindli Chana",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.77,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Brown Onion Rice",
+      "tags": [
+        "rice"
+      ],
+      "rating": 4.0,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Butter Milk",
+      "tags": [
+        "curd"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Chilly Bhaji",
+      "tags": [
+        "main"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Roasted Vegetable Soup",
+      "tags": [
+        "soup"
+      ],
+      "rating": 3.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Mixed Veg Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Papadi Chat",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Pav Bhaji",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.78,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Boondi Raita",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 1.75,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Masala Bhat",
+      "tags": [
+        "rice"
+      ],
+      "rating": 4.5,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "papdi chat was nice and i like it. pav bhaji is my fav",
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Mirchi Salan",
+      "tags": [
+        "dal"
+      ],
+      "rating": 4.5,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "papdi chat was nice and i like it. pav bhaji is my fav",
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Mango Tang",
+      "tags": [
+        "drink"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Motichur Ladoo",
+      "tags": [
+        "sweet"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-17"
+    },
+    {
+      "name": "Cut Papaya",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Misal Pav",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Pongal",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Farshan / Chop Onion",
+      "tags": [],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Assorted Greens Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Patatas Bravas",
+      "tags": [
+        "starter"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Sapnish Pan Rice",
+      "tags": [
+        "bowl"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Valenciana Stew (2 types of zucchini, 3 types of bell pepper, babycorn, carrot, french beans, chickpeas)",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Garlic Herb Crostini",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Arroz Con Leche",
+      "tags": [
+        "dessert"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Veg Chowder Soup",
+      "tags": [
+        "soup"
+      ],
+      "rating": 3.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Onion Lachha Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Moong Dal Kachori",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Green & Sweet Chutney",
+      "tags": [
+        "accompaniment"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Mix Veg Peshwari",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.82,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Moong Home Style",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 1.73,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Dal Dhaba",
+      "tags": [
+        "dal"
+      ],
+      "rating": 4.5,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "had lunch at rasoi and it was good. all items",
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Onion Rice",
+      "tags": [
+        "rice"
+      ],
+      "rating": 4.5,
+      "times_eaten": 1,
+      "last_response": "yes",
+      "last_note": "had lunch at rasoi and it was good. all items",
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Lancha",
+      "tags": [
+        "sweet"
+      ],
+      "rating": 3.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Bombay Sandwich",
+      "tags": [
+        "main"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Dal Rasam",
+      "tags": [
+        "soup"
+      ],
+      "rating": 3.5,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Tossed Salad",
+      "tags": [
+        "salad"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Ragda Chat",
+      "tags": [
+        "side",
+        "dish"
+      ],
+      "rating": 0.0,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Cabbage Masala",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.84,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Paneer Kadai",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 1.71,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Garlic Dal Tadka",
+      "tags": [
+        "dal"
+      ],
+      "rating": 1.5,
+      "times_eaten": 1,
+      "last_response": "no",
+      "last_note": null,
+      "last_seen": "2026-09-18"
+    },
+    {
+      "name": "Parwal Masala",
+      "tags": [
+        "dry",
+        "veg"
+      ],
+      "rating": 0.88,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-19"
+    },
+    {
+      "name": "Punjabi Chole",
+      "tags": [
+        "gravy",
+        "veg"
+      ],
+      "rating": 1.7,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-19"
+    },
+    {
+      "name": "Sheer Kurma",
+      "tags": [
+        "sweet"
+      ],
+      "rating": 2.8,
+      "times_eaten": 0,
+      "last_response": null,
+      "last_note": null,
+      "last_seen": "2026-09-19"
+    }
   ],
-  "tag_weights_note": "Recompute this from known_dishes each run - don't hand-maintain it. Shown here as a reference for what the derivation should produce. Verified computationally against known_dishes above.",
-  "tag_weights": {
-    "beverage": 3.0,
-    "bhaji": 5.0,
-    "bread": 4.5,
-    "breakfast": 4.6,
-    "bun": 5.0,
-    "cake": 5.0,
-    "chickpea": 5.0,
-    "chinese": 1.0,
-    "citrus": 4.0,
-    "comfort": 5.0,
-    "creamy": 5.0,
-    "dairy": 5.0,
-    "dal": 4.5,
-    "dessert": 3.0,
-    "fried": 2.83,
-    "fruit": 3.0,
-    "gravy": 3.0,
-    "legume": 5.0,
-    "light": 5.0,
-    "milk-based": 1.0,
-    "noodles": 1.0,
-    "paneer": 5.0,
-    "potato": 5.0,
-    "powdered-drink": 2.0,
-    "rice": 5.0,
-    "rice-flakes": 5.0,
-    "semolina": 4.0,
-    "snack": 5.0,
-    "soup": 3.5,
-    "south-indian": 5.0,
-    "street-food": 5.0,
-    "sweet": 3.0,
-    "tangy": 5.0,
-    "tapioca": 5.0,
-    "vegetable": 4.0
-  }
+  "tag_weights": {},
+  "comment": "known_dishes is checked by EXACT NAME first (handles cases like liking puri but hating jalebi, both fried; or liking chana/rajma/khichdi but finding generic dal 'eh'; or liking chole but hating manchurian, both gravy dishes). tag_weights is the fallback used only for dishes not yet in known_dishes, recomputed from known_dishes each run - don't hand-maintain it. skip_meal_slots is a behavior rule, not a taste preference - handle it before scoring even runs. NOTE: 'dal' lands at 4.5 (high) despite a generic 'eh' entry, because three named dal dishes (Chana, Rajma, Khichdi) are liked and outweigh the one neutral point - expected tag-averaging behavior, not an error, but means a brand-new unnamed dal dish is guessed as probably-good. Similarly, 'gravy' dropped to 3.0 (neutral) because Manchurian (disliked, gravy-based) pulls against Chole (liked, gravy-based) - a new unnamed gravy dish now gets a neutral guess rather than an optimistic one. 'fried' sits at 2.83 (leaning negative) for the same reason - Puri/Gulab Jamun/Samosa liked, but Jalebi/Hakka Noodles/Manchurian disliked.",
+  "tag_weights_note": "Recompute this from known_dishes each run - don't hand-maintain it. Shown here as a reference for what the derivation should produce. Verified computationally against known_dishes above."
 }
+
+
+

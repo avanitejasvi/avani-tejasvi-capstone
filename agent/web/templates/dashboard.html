@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    .banner { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+    .banner.warn { background: #fff4e5; border: 1px solid #f0b429; }
+    .banner.alert { background: #fdecea; border: 1px solid #e5484d; }
+    a.button { display: inline-block; padding: 8px 14px; background: #1a1a1a; color: #fff; border-radius: 6px; text-decoration: none; margin-right: 8px; }
+    nav a { margin-right: 16px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/menu/upload">Upload menu</a>
+    <a href="/feedback">Rate past meals{% if pending_feedback_count %} ({{ pending_feedback_count }}){% endif %}</a>
+    <a href="/settings">Settings</a>
+    <a href="/auth/logout">Log out</a>
+  </nav>
+  <h1>Hi{% if user.display_name %}, {{ user.display_name }}{% endif %}</h1>
+
+  {% if needs_reauth %}
+  <div class="banner alert">
+    Your Google Calendar access has expired or was revoked.
+    <a href="/auth/login">Reconnect Google</a> to keep getting scheduled meals.
+  </div>
+  {% endif %}
+
+  {% if pending_feedback_count %}
+  <div class="banner warn">
+    You have {{ pending_feedback_count }} past meal(s) waiting for your feedback.
+    <a href="/feedback">Rate them</a> — this is the only way a dish's rating can go up, not just down.
+  </div>
+  {% endif %}
+
+  {% if no_menu_this_week %}
+  <div class="banner warn">
+    No menu has been uploaded for this week yet.
+    <a href="/menu/upload">Upload it now</a> so meals can be scheduled.
+  </div>
+  {% elif missing_dates %}
+  <div class="banner warn">
+    This week's menu is missing for: {{ missing_dates | join(", ") }}.
+    <a href="/menu/upload">Upload it</a> to cover the rest of the week.
+  </div>
+  {% endif %}
+
+  <p>Your Calendar gets this week's mess picks automatically every Monday morning.
+     Adjust what gets scheduled in <a href="/settings">Settings</a>.</p>
+</body>
+</html>

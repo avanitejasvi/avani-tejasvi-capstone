@@ -1,5 +1,5 @@
 import difflib
-import io
+import hashlib
 import json
 import os
 import re
@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, time as dt_time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Protocol
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -15,52 +15,44 @@ from pydantic import BaseModel, Field
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from googleapiclient.http import MediaIoBaseDownload
+
+from agent.timezone import IST
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-DRIVE_FOLDER_NAME = "meal-menu-match"
-GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/drive.readonly",
-    "https://www.googleapis.com/auth/calendar",
-]
 
 EAT_THRESHOLD = 3.0
-SCORE_MIN, SCORE_MAX = 0.0, 5.0
+RATING_MIN, RATING_MAX = 0.0, 5.0
 
 # Open Question 1 (skills.md): fuzzy-match threshold. 0.85 on a normalized
 # (lowercase, whitespace-collapsed) difflib ratio cleanly separates OCR noise
 # ("paneer tkka" vs "paneer tikka" -> 0.957) from genuinely different dishes
 # ("veg manchurian rice bowl" vs "veg manchurian" -> 0.737), verified against
-# the real known_dishes list before picking the cutoff.
+# real dish names before picking the cutoff.
 FUZZY_MATCH_THRESHOLD = 0.85
 
-# Open Question 2: concrete score-adjustment sizes.
-# Applied as a delta once a dish already has real feedback history.
+# Open Question 2: concrete score-adjustment sizes, applied as a delta once a
+# dish already has real feedback history.
 RESPONSE_DELTA = {"yes": 1.0, "no": -1.0, "maybe": 0.0}
 NOTE_DELTA_BONUS = {"positive": 0.5, "negative": -0.5, "neutral": 0.0}
 # Open Question 5: the first real response a dish ever gets REPLACES its
-# tag_weight_estimate outright (direct signal beats an inference) instead of
-# nudging it. These are the baselines that first response sets, before any
-# note bonus is added on top.
+# tag_weight_estimate outright (direct signal beats an inference). These are
+# the baselines that first response sets, before any note bonus on top.
 RESPONSE_BASELINE = {"yes": 4.0, "no": 1.5, "maybe": 2.5}
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+# gemini-3.6-flash was intermittently 503 UNAVAILABLE (Google-side capacity) when this
+# was tested; gemini-3.5-flash-lite responded reliably and is cheaper/faster, so it's
+# the default — override via GEMINI_MODEL if that changes.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+# The real menu board has 300+ dishes once every mess/meal is included; the default
+# output-token limit truncates the JSON array mid-string on a board this size.
+GEMINI_EXTRACTION_MAX_OUTPUT_TOKENS = 16000
 
-# Open Question 3: mess timing windows, used both as the default schedule
-# slot and as the search range when resolving a conflict. Kept as simple
-# constants since there is no separate MessTiming data file yet.
-MESS_TIMING_WINDOWS = {
-    "breakfast": (dt_time(8, 0), dt_time(9, 30)),
-    "lunch": (dt_time(12, 30), dt_time(14, 30)),
-    "dinner": (dt_time(19, 30), dt_time(21, 30)),
-}
-DEFAULT_MEAL_START = {"breakfast": dt_time(8, 0), "lunch": dt_time(13, 0), "dinner": dt_time(20, 0)}
 MEAL_DURATION_MINUTES = 45
 SLOT_SEARCH_STEP_MINUTES = 15
 
-# Naive fallback vocabulary for tag inference and note-sentiment, used only
-# when Gemini is unavailable or a call fails — keeps the whole loop runnable
+# Fallback vocabulary used only when a dish has no category to derive tags
+# from (or Gemini/live calls are unavailable) — keeps the whole loop runnable
 # offline, matching skills.md's own "test before wiring up live calls" order.
 NAIVE_TAG_KEYWORDS = {
     "paneer": ["veg", "jain"], "dal": ["dal"], "rice": ["rice"], "chawal": ["rice"],
@@ -71,25 +63,40 @@ NAIVE_TAG_KEYWORDS = {
     "mutton": ["non-vegetarian"], "fish": ["non-vegetarian"], "egg": ["non-vegetarian"],
     "risotto": ["fusion"], "fusion": ["fusion"], "manchurian": ["fusion", "spicy"],
 }
-NAIVE_POSITIVE_WORDS = {"good", "great", "loved", "love", "liked", "like", "yum", "yummy", "tasty", "amazing", "favorite"}
-NAIVE_NEGATIVE_WORDS = {"bad", "hated", "hate", "disliked", "dislike", "bland", "spicy", "soggy", "cold", "gross", "too"}
 
 
 class GoogleAuthUnavailable(Exception):
     pass
 
 
+class NoMenuAvailable(Exception):
+    """Raised by act_menu_intake in live mode when no shared MenuIntake has
+    been uploaded yet for a date — a genuine state to surface, never silently
+    papered over with the offline fixture in production."""
+
+    def __init__(self, event_date: date):
+        self.event_date = event_date
+        super().__init__(f"no menu uploaded for {event_date.isoformat()}")
+
+
+class ExtractedDish(BaseModel):
+    name: str
+    mess: str  # "Rasoi" | "Aahar" (or "Both" for a same_for_both_messes meal)
+    meal_slot: str  # "breakfast" | "lunch" | "evening_snacks" | "dinner" | "sunday_brunch"
+    category: Optional[str] = None  # e.g. "Dal", "Gravy Veg - Jain" — the menu section it was listed under
+    day: Optional[str] = None  # "monday".."sunday" — the board is a weekly rotating menu, one column per weekday
+
+
 class MenuIntake(BaseModel):
     date: date
     source_image_id: str
-    extracted_items: list[str]
-    processed: bool = False
+    extracted_items: list[ExtractedDish]
 
 
 class KnownDish(BaseModel):
     name: str
     tags: list[str]
-    score: float
+    rating: float
     times_eaten: int = 0
     last_response: Optional[str] = None
     last_note: Optional[str] = None
@@ -102,10 +109,30 @@ class UserPreferences(BaseModel):
     skip_meal_slots: list[str]
     known_dishes: list[KnownDish]
     tag_weights: dict[str, float] = Field(default_factory=dict)
+    # Free-text notes the user hand-wrote into preferences_u001.json explaining
+    # non-obvious tag_weights behavior. Not used by any logic — round-tripped
+    # as-is so a live run's write-back doesn't silently erase them.
+    comment: Optional[str] = None
+    tag_weights_note: Optional[str] = None
+
+
+class AgentRepository(Protocol):
+    """What ReActMealAgent needs from persistence — satisfied structurally by
+    agent/repository.py's Postgres-backed Repository (production, web app,
+    jobs) and by this module's own FileRepository (local CLI dry-runs). No
+    import of agent/repository.py here, on purpose: it imports models from
+    this module, and a two-way import would be circular."""
+
+    def load_preferences(self, user_id: str) -> "UserPreferences": ...
+
+    def save_preferences(self, user_id: str, prefs: "UserPreferences") -> None: ...
+
+    def get_menu_intake(self, event_date: date) -> Optional["MenuIntake"]: ...
 
 
 class ScoredDish(BaseModel):
     name: str
+    mess: str
     tags: list[str]
     score: float
     source: str  # "known_dish" | "known_dish_fuzzy" | "tag_weight_estimate" | "no_data"
@@ -116,6 +143,7 @@ class ScheduledMeal(BaseModel):
     date: date
     meal_slot: str
     selected_items: list[str]
+    top_picks: list[str] = Field(default_factory=list)  # subset of selected_items actually named in the event description
     calendar_event_id: Optional[str] = None
     scheduled_time: Optional[dt_time] = None
     conflict_resolved: bool = False
@@ -157,6 +185,17 @@ def find_fuzzy_match(name: str, known_dishes: list[KnownDish], threshold: float 
     return best_dish if best_ratio >= threshold else None
 
 
+def derive_tags_from_category(category: Optional[str], name: str) -> list[str]:
+    """A dish's menu category (e.g. 'Gravy Veg - Jain') is a much more
+    reliable tag source than guessing from the name alone, since it comes
+    straight from the mess's own menu structure (mess_structure.json). Falls
+    back to name-keyword guessing only when no category was extracted."""
+    if not category:
+        return infer_tags_naive(name)
+    tags = [tag for tag in re.split(r"[\s/\-]+", category.lower()) if tag]
+    return tags or infer_tags_naive(name)
+
+
 def infer_tags_naive(name: str) -> list[str]:
     lowered = name.lower()
     tags: list[str] = []
@@ -168,42 +207,14 @@ def infer_tags_naive(name: str) -> list[str]:
     return tags
 
 
-def interpret_note_sentiment_naive(note: Optional[str]) -> str:
-    if not note:
-        return "neutral"
-    words = set(re.findall(r"[a-z']+", note.lower()))
-    if words & NAIVE_NEGATIVE_WORDS:
-        return "negative"
-    if words & NAIVE_POSITIVE_WORDS:
-        return "positive"
-    return "neutral"
-
-
-def _load_google_credentials() -> Credentials:
-    client_id = os.getenv("GOOGLE_CLIENT_ID")
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-    if not (client_id and client_secret and refresh_token):
-        raise GoogleAuthUnavailable(
-            "Missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_REFRESH_TOKEN "
-            "in the environment; run authorize_google.py once before live Drive/Calendar calls will work."
-        )
-    return Credentials(
-        token=None,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=client_id,
-        client_secret=client_secret,
-        scopes=GOOGLE_SCOPES,
-    )
-
-
-def build_drive_service():
-    return build("drive", "v3", credentials=_load_google_credentials(), cache_discovery=False)
-
-
-def build_calendar_service():
-    return build("calendar", "v3", credentials=_load_google_credentials(), cache_discovery=False)
+def deterministic_event_id(*parts: str) -> str:
+    """Google Calendar event ids must be 5-1024 chars of lowercase base32hex
+    (0-9, a-v). A stable hash of the identifying parts (user, date, slot)
+    means retrying a create after a mid-request crash reuses the same id
+    instead of a random one — a 409 from Calendar then means "already
+    created", not "new event". A hex digest is already valid: 0-9a-f is a
+    subset of 0-9a-v, so no charset remapping is needed."""
+    return hashlib.sha256(":".join(parts).encode()).hexdigest()
 
 
 class FilesystemTool:
@@ -216,12 +227,25 @@ class FilesystemTool:
         path.write_text(json.dumps(payload, indent=2, default=str))
 
 
+def load_mess_structure(fs: FilesystemTool = FilesystemTool()) -> dict:
+    return fs.read_json(DATA_DIR / "mess_structure.json")
+
+
+def load_mess_timings(fs: FilesystemTool = FilesystemTool()) -> dict[str, tuple[dt_time, dt_time]]:
+    rows = fs.read_json(DATA_DIR / "mess_timings.json")
+    return {
+        row["meal_slot"]: (dt_time.fromisoformat(row["start_time"]), dt_time.fromisoformat(row["end_time"]))
+        for row in rows
+    }
+
+
 class GeminiSkill:
     """Wraps the Gemini API calls the skill relies on: reading a photographed
-    menu image, guessing tags for dishes with no history, and interpreting a
-    feedback note's sentiment. Every method degrades to a deterministic
-    fallback (see NAIVE_* above) if no API key is configured or the call
-    fails, so the rest of the agent never has to know which path ran."""
+    menu image (structured by mess/meal/category, per mess_structure.json)
+    and interpreting a feedback note's sentiment. Both fall back to a
+    deterministic path if unavailable or a call fails — the fixture for
+    extraction, a keyword heuristic for sentiment — so the loop stays runnable
+    offline."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = GEMINI_MODEL):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY")
@@ -241,40 +265,41 @@ class GeminiSkill:
             self._client = genai.Client(api_key=self.api_key)
         return self._client
 
-    def extract_dishes_from_image(self, image_bytes: bytes, mime_type: str) -> list[str]:
+    def extract_dishes_from_image(self, image_bytes: bytes, mime_type: str, mess_structure: dict) -> list[ExtractedDish]:
         from google.genai import types
 
         client = self._client_or_raise()
+        instructions = mess_structure.get("extraction_instructions_for_gemini", "")
         prompt = (
-            "This is a photo of a college mess/dining hall menu board. Read every dish "
-            "name you can see and return ONLY a JSON array of strings, one per dish, "
-            "exactly as written (fix obvious OCR artifacts like stray characters, but "
-            "do not translate or rename dishes). No prose, no markdown fences."
+            "This is a photo of a college mess menu board. It is a WEEKLY ROTATING menu — each "
+            "meal section has one column or block per day of the week (Monday through Sunday), not "
+            "just one set of dishes. You must identify which weekday column each dish belongs to; "
+            "do not flatten the whole week into one undated list. "
+            f"{instructions}\n\n"
+            f"Mess/meal/category structure to use (JSON): {json.dumps(mess_structure.get('meals', {}))}\n\n"
+            "Return ONLY a JSON array of objects, one per dish visible on the board, each shaped "
+            'exactly like {"name": str, "mess": "Rasoi"|"Aahar"|"Both", "meal_slot": str, "category": str|null, '
+            '"day": "monday"|"tuesday"|"wednesday"|"thursday"|"friday"|"saturday"|"sunday"|null} '
+            "(meal_slot must be one of breakfast/lunch/evening_snacks/dinner/sunday_brunch; category is the exact "
+            "bold heading the dish appeared under, or null if the meal has no fixed category list yet; day is null "
+            "only if the board genuinely has no day-of-week structure for that section). "
+            "Fix obvious OCR artifacts in dish names but do not translate or rename them. No prose, no markdown fences."
         )
         response = client.models.generate_content(
             model=self.model,
             contents=[types.Part.from_bytes(data=image_bytes, mime_type=mime_type), prompt],
+            config=types.GenerateContentConfig(max_output_tokens=GEMINI_EXTRACTION_MAX_OUTPUT_TOKENS),
         )
-        return _parse_json_list(response.text)
-
-    def infer_tags(self, names: list[str]) -> dict[str, list[str]]:
-        if not names:
-            return {}
-        prompt = (
-            "For each dish name below, guess 1-4 short lowercase category tags "
-            "(e.g. veg, non-vegetarian, gravy, dry, rice, dal, sweet, dessert, spicy, "
-            "curd-based, fusion, jain) based only on the name. Return ONLY a JSON "
-            f"object mapping each dish name to a list of tags. Dishes: {json.dumps(names)}"
-        )
-        # No internal try/except: a failure here (bad model name, network, quota) must
-        # propagate to the caller so it's logged truthfully instead of silently
-        # masquerading as a successful live call — see act_infer_tags.
-        client = self._client_or_raise()
-        response = client.models.generate_content(model=self.model, contents=[prompt])
-        parsed = _parse_json_object(response.text)
-        return {name: [str(t).lower() for t in parsed.get(name, [])] or infer_tags_naive(name) for name in names}
+        parsed = json.loads(_strip_code_fence(response.text))
+        return [ExtractedDish(**item) for item in parsed]
 
     def interpret_feedback_note(self, dish_name: str, response: str, note: Optional[str]) -> str:
+        """Kept as a standalone capability even though the current weekly-cadence
+        production job doesn't call it: since removing the single STUDENT_EMAIL
+        attendee, there's no per-run RSVP+note to classify anymore (see
+        GoogleCalendarSkill.get_event_status). Still available for a future
+        richer feedback channel (e.g. a manual "how was it" reply) without
+        needing to re-derive the Gemini call."""
         if not note:
             return "neutral"
         prompt = (
@@ -282,7 +307,8 @@ class GeminiSkill:
             f"'{response}', and added this note: \"{note}\". Classify the note's "
             "sentiment toward the dish as exactly one word: positive, negative, or neutral."
         )
-        # No internal try/except — see infer_tags above; act_apply_feedback handles the fallback.
+        # No internal try/except: a failure here (bad model name, network, quota) must
+        # propagate to the caller so it's logged truthfully.
         client = self._client_or_raise()
         result = client.models.generate_content(model=self.model, contents=[prompt])
         word = result.text.strip().lower()
@@ -299,113 +325,102 @@ def _strip_code_fence(text: str) -> str:
     return text.strip()
 
 
-def _parse_json_list(text: str) -> list[str]:
-    parsed = json.loads(_strip_code_fence(text))
-    return [str(item) for item in parsed]
-
-
-def _parse_json_object(text: str) -> dict:
-    return json.loads(_strip_code_fence(text))
-
-
-class GoogleDriveMenuImageSkill:
-    def __init__(self, folder_name: str = DRIVE_FOLDER_NAME):
-        self.folder_name = folder_name
-
-    def _find_folder_id(self, service) -> str:
-        results = (
-            service.files()
-            .list(
-                q=f"name='{self.folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
-                fields="files(id,name)",
-            )
-            .execute()
-        )
-        folders = results.get("files", [])
-        if not folders:
-            raise FileNotFoundError(f"No Drive folder named '{self.folder_name}' found")
-        return folders[0]["id"]
-
-    def fetch_latest_menu_image(self) -> tuple[str, bytes, str]:
-        service = build_drive_service()
-        folder_id = self._find_folder_id(service)
-        results = (
-            service.files()
-            .list(
-                q=f"'{folder_id}' in parents and trashed=false and mimeType contains 'image/'",
-                fields="files(id,name,mimeType,modifiedTime)",
-                orderBy="modifiedTime desc",
-                pageSize=1,
-            )
-            .execute()
-        )
-        files = results.get("files", [])
-        if not files:
-            raise FileNotFoundError(f"No image file found in Drive folder '{self.folder_name}'")
-        file_id, mime_type = files[0]["id"], files[0]["mimeType"]
-
-        buffer = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, service.files().get_media(fileId=file_id))
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        buffer.seek(0)
-        return file_id, buffer.read(), mime_type
-
-
 class GoogleCalendarSkill:
-    def __init__(self, calendar_id: str = "primary"):
+    """Built from one user's own Credentials (agent/repository.py decrypts
+    and refreshes their stored token) — every event this creates lives on
+    that user's own calendar. There is no single "the" Drive/Calendar
+    account anymore."""
+
+    def __init__(self, credentials: Credentials, calendar_id: str = "primary"):
         self.calendar_id = calendar_id
+        self.service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
 
     def list_events_in_window(self, event_date: date, window: tuple[dt_time, dt_time]) -> list[dict]:
-        service = build_calendar_service()
-        start_dt = datetime.combine(event_date, window[0])
-        end_dt = datetime.combine(event_date, window[1])
+        start_dt = datetime.combine(event_date, window[0], tzinfo=IST)
+        end_dt = datetime.combine(event_date, window[1], tzinfo=IST)
         result = (
-            service.events()
+            self.service.events()
             .list(
                 calendarId=self.calendar_id,
-                timeMin=start_dt.isoformat() + "+05:30",
-                timeMax=end_dt.isoformat() + "+05:30",
+                timeMin=start_dt.isoformat(),
+                timeMax=end_dt.isoformat(),
                 singleEvents=True,
             )
             .execute()
         )
         return result.get("items", [])
 
-    def create_meal_event(self, meal_slot: str, event_date: date, start_time: dt_time, description: str, flagged: bool = False) -> str:
-        service = build_calendar_service()
+    def create_event_with_id(
+        self, event_id: str, meal_slot: str, event_date: date, start_time: dt_time, description: str, flagged: bool = False
+    ) -> str:
+        """Uses a deterministic event id (see deterministic_event_id) so a
+        retry after a mid-request crash — event created, but the caller's DB
+        write never landed — is recovered by treating Calendar's 409 as
+        success rather than creating a duplicate."""
         start_dt = datetime.combine(event_date, start_time)
         end_dt = start_dt + timedelta(minutes=MEAL_DURATION_MINUTES)
-        summary = f"Mess meal check: {meal_slot.title()}"
+        summary = f"Mess meal check: {meal_slot.replace('_', ' ').title()}"
         if flagged:
             summary = f"[Conflict] {summary} — please rearrange"
-        attendees = []
-        student_email = os.getenv("STUDENT_EMAIL")
-        if student_email:
-            attendees.append({"email": student_email})
         body = {
+            "id": event_id,
             "summary": summary,
             "description": description,
             "start": {"dateTime": start_dt.isoformat(), "timeZone": "Asia/Kolkata"},
             "end": {"dateTime": end_dt.isoformat(), "timeZone": "Asia/Kolkata"},
         }
-        if attendees:
-            body["attendees"] = attendees
-        created = service.events().insert(calendarId=self.calendar_id, body=body, sendUpdates="all" if attendees else "none").execute()
-        return created["id"]
+        try:
+            created = self.service.events().insert(calendarId=self.calendar_id, body=body).execute()
+            return created["id"]
+        except HttpError as exc:
+            if exc.resp.status == 409:
+                existing = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+                return existing["id"]
+            raise
 
-    def get_response(self, event_id: str) -> Optional[str]:
-        service = build_calendar_service()
-        event = service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
-        for attendee in event.get("attendees", []):
-            if attendee.get("self"):
-                status = attendee.get("responseStatus")
-                return {"accepted": "yes", "declined": "no", "tentative": "maybe"}.get(status)
-        return "no" if event.get("status") == "cancelled" else None
+    def create_reminder_event(self, event_id: str, event_date: date, summary: str, description: str) -> str:
+        """Same deterministic-id + 409-as-success pattern as create_event_with_id,
+        for the weekly "no menu uploaded yet" reminder — a separate small method
+        rather than overloading create_event_with_id's meal-specific summary/
+        flagged-conflict logic for an unrelated kind of event."""
+        start_dt = datetime.combine(event_date, dt_time(9, 0))
+        end_dt = start_dt + timedelta(minutes=15)
+        body = {
+            "id": event_id,
+            "summary": summary,
+            "description": description,
+            "start": {"dateTime": start_dt.isoformat(), "timeZone": "Asia/Kolkata"},
+            "end": {"dateTime": end_dt.isoformat(), "timeZone": "Asia/Kolkata"},
+        }
+        try:
+            created = self.service.events().insert(calendarId=self.calendar_id, body=body).execute()
+            return created["id"]
+        except HttpError as exc:
+            if exc.resp.status == 409:
+                existing = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+                return existing["id"]
+            raise
+
+    def get_event_status(self, event_id: str) -> Optional[str]:
+        """Returns None if the event no longer exists (404), else its status
+        ("confirmed" or "cancelled"). Since removing the single STUDENT_EMAIL
+        attendee, the calendar owner's own RSVP carries no signal — whether
+        the event still exists is the only feedback signal jobs/collect_feedback.py
+        uses."""
+        try:
+            event = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+        except HttpError as exc:
+            if exc.resp.status == 404:
+                return None
+            raise
+        return event.get("status")
 
     def delete_event(self, event_id: str) -> None:
-        build_calendar_service().events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
+        try:
+            self.service.events().delete(calendarId=self.calendar_id, eventId=event_id).execute()
+        except HttpError as exc:
+            if exc.resp.status != 404:
+                raise
 
 
 def _parse_event_dt(value: str) -> datetime:
@@ -442,11 +457,11 @@ def find_free_slot(existing_events: list[dict], event_date: date, window: tuple[
 
 class MenuPreferenceMatchingSkill:
     def compute_tag_weights(self, prefs: UserPreferences) -> dict[str, float]:
-        tag_scores: dict[str, list[float]] = {}
+        tag_ratings: dict[str, list[float]] = {}
         for dish in prefs.known_dishes:
             for tag in dish.tags:
-                tag_scores.setdefault(tag, []).append(dish.score)
-        return {tag: sum(scores) / len(scores) for tag, scores in tag_scores.items()}
+                tag_ratings.setdefault(tag, []).append(dish.rating)
+        return {tag: round(sum(ratings) / len(ratings), 2) for tag, ratings in tag_ratings.items()}
 
     def is_slot_skipped(self, prefs: UserPreferences, meal_slot: str) -> bool:
         return meal_slot in prefs.skip_meal_slots
@@ -459,24 +474,24 @@ class MenuPreferenceMatchingSkill:
             for restriction in prefs.dietary_restrictions
         )
 
-    def match_dish(self, name: str, tags: list[str], prefs: UserPreferences) -> ScoredDish:
+    def match_dish(self, name: str, mess: str, tags: list[str], prefs: UserPreferences) -> ScoredDish:
         normalized = normalize_dish_name(name)
         for dish in prefs.known_dishes:
             if normalize_dish_name(dish.name) == normalized:
-                decision = "eat" if dish.score >= EAT_THRESHOLD else "skip"
-                return ScoredDish(name=name, tags=tags, score=dish.score, source="known_dish", decision=decision)
+                decision = "eat" if dish.rating >= EAT_THRESHOLD else "skip"
+                return ScoredDish(name=name, mess=mess, tags=tags, score=dish.rating, source="known_dish", decision=decision)
 
         fuzzy = find_fuzzy_match(name, prefs.known_dishes)
         if fuzzy is not None:
-            decision = "eat" if fuzzy.score >= EAT_THRESHOLD else "skip"
-            return ScoredDish(name=fuzzy.name, tags=fuzzy.tags, score=fuzzy.score, source="known_dish_fuzzy", decision=decision)
+            decision = "eat" if fuzzy.rating >= EAT_THRESHOLD else "skip"
+            return ScoredDish(name=fuzzy.name, mess=mess, tags=fuzzy.tags, score=fuzzy.rating, source="known_dish_fuzzy", decision=decision)
 
         recognized = [prefs.tag_weights[tag] for tag in tags if tag in prefs.tag_weights]
         if not recognized:
-            return ScoredDish(name=name, tags=tags, score=0.0, source="no_data", decision="skip")
+            return ScoredDish(name=name, mess=mess, tags=tags, score=0.0, source="no_data", decision="skip")
         estimate = sum(recognized) / len(recognized)
         decision = "eat" if estimate >= EAT_THRESHOLD else "skip"
-        return ScoredDish(name=name, tags=tags, score=round(estimate, 2), source="tag_weight_estimate", decision=decision)
+        return ScoredDish(name=name, mess=mess, tags=tags, score=round(estimate, 2), source="tag_weight_estimate", decision=decision)
 
     def register_new_dishes(self, prefs: UserPreferences, scored: list[ScoredDish], event_date: date) -> UserPreferences:
         existing = {normalize_dish_name(dish.name) for dish in prefs.known_dishes}
@@ -484,7 +499,7 @@ class MenuPreferenceMatchingSkill:
             if normalize_dish_name(result.name) in existing or result.source not in ("tag_weight_estimate", "no_data"):
                 continue
             prefs.known_dishes.append(
-                KnownDish(name=result.name, tags=result.tags, score=result.score, times_eaten=0, last_seen=event_date)
+                KnownDish(name=result.name, tags=result.tags, rating=result.score, times_eaten=0, last_seen=event_date)
             )
             existing.add(normalize_dish_name(result.name))
         return prefs
@@ -497,10 +512,10 @@ class MenuPreferenceMatchingSkill:
             if dish.last_response is None:
                 # Open Question 5: first real feedback replaces the estimate outright.
                 bonus = NOTE_DELTA_BONUS.get(note_sentiment, 0.0) if response in ("yes", "maybe") else 0.0
-                dish.score = RESPONSE_BASELINE[response] + bonus
+                dish.rating = RESPONSE_BASELINE[response] + bonus
             else:
-                dish.score += RESPONSE_DELTA[response] + NOTE_DELTA_BONUS.get(note_sentiment, 0.0)
-            dish.score = max(SCORE_MIN, min(SCORE_MAX, round(dish.score, 2)))
+                dish.rating += RESPONSE_DELTA[response] + NOTE_DELTA_BONUS.get(note_sentiment, 0.0)
+            dish.rating = max(RATING_MIN, min(RATING_MAX, round(dish.rating, 2)))
             dish.times_eaten += 1
             dish.last_response = response
             dish.last_note = note
@@ -508,44 +523,47 @@ class MenuPreferenceMatchingSkill:
             break
         return prefs
 
-    def build_event_description(self, scored: list[ScoredDish], conflict_flag: bool = False) -> str:
-        known_favorites = [s for s in scored if s.source in ("known_dish", "known_dish_fuzzy") and s.decision == "eat"]
-        new_estimated = [s for s in scored if s.source == "tag_weight_estimate" and s.decision == "eat"]
-        no_data = [s for s in scored if s.source == "no_data"]
-        skipped = [s for s in scored if s.decision == "skip" and s.source != "no_data"]
-        lines = []
+    def select_top_picks(self, scored: list[ScoredDish], top_n: int = 3) -> list[ScoredDish]:
+        eat_items = sorted((s for s in scored if s.decision == "eat"), key=lambda s: s.score, reverse=True)
+        return eat_items[:top_n]
+
+    def build_event_description(self, scored: list[ScoredDish], top_picks: list[ScoredDish], conflict_flag: bool = False) -> str:
+        """Kept deliberately compact: a single short line naming the top-scoring
+        picks and which mess each is from, not a full category breakdown — a
+        RSVP is per-event, so a shorter list keeps YES/NO/MAYBE meaningful.
+        Feedback later only ever targets what's named here (top_picks), never
+        the full eat-decision list, so a YES/NO/MAYBE can't silently rate
+        dishes the student never actually saw."""
+        eat_count = sum(1 for s in scored if s.decision == "eat")
+        if top_picks:
+            picks = ", ".join(f"{s.name} [{s.mess}] {s.score:.1f}" for s in top_picks)
+            line = f"Top picks: {picks}"
+            if eat_count > len(top_picks):
+                line += f" (+{eat_count - len(top_picks)} more matched)"
+        else:
+            line = "No confident picks today — mostly new or no-data dishes."
         if conflict_flag:
-            lines.append("SCHEDULING CONFLICT — no free slot found in this meal's window; please rearrange manually.")
-        if known_favorites:
-            lines.append("Known favorites: " + ", ".join(f"{s.name} ({s.score:.1f})" for s in known_favorites))
-        if new_estimated:
-            lines.append("New, estimated matches: " + ", ".join(f"{s.name} (~{s.score:.1f})" for s in new_estimated))
-        if no_data:
-            lines.append("New dish, no data yet: " + ", ".join(s.name for s in no_data))
-        if skipped:
-            lines.append("Not worth it today: " + ", ".join(s.name for s in skipped))
-        if not lines:
-            lines.append("No menu items available to evaluate.")
-        return "\n".join(lines)
+            line = "CONFLICT, please rearrange — " + line
+        return line
 
 
 class ReActMealAgent:
     def __init__(
         self,
         user_id: str,
-        drive_skill: GoogleDriveMenuImageSkill,
-        calendar_skill: GoogleCalendarSkill,
+        calendar_skill: Optional[GoogleCalendarSkill],
         gemini_skill: GeminiSkill,
         matcher: MenuPreferenceMatchingSkill,
         fs: FilesystemTool,
+        repo: AgentRepository,
         live: bool = False,
     ):
         self.user_id = user_id
-        self.drive = drive_skill
         self.calendar = calendar_skill
         self.gemini = gemini_skill
         self.matcher = matcher
         self.fs = fs
+        self.repo = repo
         self.live = live
         self.trace: list[Trace] = []
         self._step_counter = 0
@@ -560,19 +578,12 @@ class ReActMealAgent:
         print(f"Action Input: {entry.action_input}")
         print(f"Observation: {entry.observation}")
 
-    def _preferences_path(self) -> Path:
-        return DATA_DIR / f"preferences_{self.user_id}.json"
-
-    def _menu_intake_path(self, event_date: date) -> Path:
-        return DATA_DIR / f"menu_intake_{event_date.isoformat()}.json"
-
     def perceive_preferences(self) -> UserPreferences:
-        path = self._preferences_path()
-        prefs = UserPreferences(**self.fs.read_json(path))
+        prefs = self.repo.load_preferences(self.user_id)
         self._log(
             "I need the student's stored preferences before judging any dish.",
-            "filesystem.read_json",
-            {"path": str(path)},
+            "repository.load_preferences",
+            {"user_id": self.user_id},
             f"Loaded {len(prefs.known_dishes)} known dish(es), "
             f"{len(prefs.dietary_restrictions)} dietary restriction(s), skip_meal_slots={prefs.skip_meal_slots}.",
         )
@@ -596,86 +607,86 @@ class ReActMealAgent:
         )
         return skip
 
-    def act_menu_intake(self, event_date: date) -> MenuIntake:
+    def act_menu_intake(self, event_date: date, cached_items: Optional[list[ExtractedDish]] = None) -> MenuIntake:
+        if cached_items is not None:
+            # scheduling.py's weekly path: it already loaded the shared, once-a-week
+            # upload's extraction for this date and passes it straight in — no per-run
+            # Gemini call, no per-user re-fetch of the same physical menu.
+            intake = MenuIntake(date=event_date, source_image_id="shared-weekly-upload", extracted_items=cached_items)
+            self._log(
+                "Reusing the shared weekly upload's extraction instead of calling Gemini per run.",
+                "workflow.cached_menu_intake",
+                {"event_date": str(event_date)},
+                f"Using {len(cached_items)} previously-extracted item(s).",
+            )
+            return intake
+
         if self.live:
-            try:
-                file_id, image_bytes, mime_type = self.drive.fetch_latest_menu_image()
-                items = self.gemini.extract_dishes_from_image(image_bytes, mime_type)
-                intake = MenuIntake(date=event_date, source_image_id=file_id, extracted_items=items)
+            intake = self.repo.get_menu_intake(event_date)
+            if intake is not None:
                 self._log(
-                    "Gemini reads the photographed menu image — SKILL.md's real intake source.",
-                    "gemini.extract_dishes_from_image",
-                    {"folder": self.drive.folder_name},
-                    f"Extracted {len(items)} item(s): {items}",
+                    "No menu was passed in for this run — check the shared MenuIntake Postgres table directly.",
+                    "repository.get_menu_intake",
+                    {"event_date": str(event_date)},
+                    f"Loaded {len(intake.extracted_items)} item(s) uploaded for this date.",
                 )
-                self.fs.write_json(self._menu_intake_path(event_date), json.loads(intake.model_dump_json()))
                 return intake
-            except Exception as exc:
-                # Broad on purpose: Drive auth, a missing image, a network hiccup, or Gemini
-                # returning malformed JSON should all fall back to the fixture, never crash the run.
-                self._log(
-                    "Gemini reads the photographed menu image — SKILL.md's real intake source.",
-                    "gemini.extract_dishes_from_image",
-                    {"folder": self.drive.folder_name},
-                    f"Live intake failed ({exc}); falling back to the local sample menu, "
-                    "matching SKILL.md's test-before-connecting build order.",
-                )
+            self._log(
+                "No menu was passed in for this run — check the shared MenuIntake Postgres table directly.",
+                "repository.get_menu_intake",
+                {"event_date": str(event_date)},
+                "No shared menu has been uploaded for this date yet.",
+            )
+            raise NoMenuAvailable(event_date)
 
         path = DATA_DIR / "menu_intake_sample.json"
         intake = MenuIntake(**self.fs.read_json(path))
         intake.date = event_date
         self._log(
-            "Local fixture stands in for a real photographed menu until Drive has one.",
+            "Dry run — local fixture stands in for a real uploaded menu.",
             "filesystem.read_json",
             {"path": str(path)},
-            f"Loaded {len(intake.extracted_items)} local item(s): {intake.extracted_items}",
-        )
-        self.fs.write_json(self._menu_intake_path(event_date), json.loads(intake.model_dump_json()))
-        self._log(
-            "Extracted data is stored before any matching happens, so it survives a bad later step.",
-            "filesystem.write_json",
-            {"path": str(self._menu_intake_path(event_date))},
-            "MenuIntake record persisted (processed=False).",
+            f"Loaded {len(intake.extracted_items)} local item(s).",
         )
         return intake
 
-    def act_infer_tags(self, names: list[str]) -> dict[str, list[str]]:
-        source = "naive fallback (offline or no GEMINI_API_KEY)"
-        tags_by_name = None
-        if self.live and self.gemini.available:
-            try:
-                tags_by_name = self.gemini.infer_tags(names)
-                source = "gemini.infer_tags (live)"
-            except Exception as exc:
-                source = f"naive fallback (live call failed: {exc})"
-        if tags_by_name is None:
-            tags_by_name = {name: infer_tags_naive(name) for name in names}
+    def act_filter_and_score(self, prefs: UserPreferences, intake: MenuIntake, meal_slot: str, event_date: date) -> list[ScoredDish]:
+        # Open Question 6: the board covers every mess at once, so both Rasoi and
+        # Aahar are scored together for the requested meal_slot — neither is
+        # dropped, each recommended dish just shows which mess it's from.
+        # The board is also a WEEKLY rotating menu (one column per weekday), so
+        # meal_slot alone isn't enough — without a day filter, every weekday's
+        # lunch/dinner gets flattened into one bloated list.
+        weekday = event_date.strftime("%A").lower()
+        candidates = [
+            item for item in intake.extracted_items
+            if item.meal_slot == meal_slot and (item.day is None or item.day.lower() == weekday)
+        ]
         self._log(
-            "A dish with no tags has nothing for tag_weights to average, so tags are guessed "
-            "from the name before matching — the raw MenuIntake record stays untouched.",
-            "gemini.infer_tags",
-            {"names": names},
-            f"[{source}] {tags_by_name}",
+            f"The photographed board covers every mess/meal/weekday at once — filter down to just "
+            f"'{meal_slot}' on '{weekday}' before scoring, keeping both Rasoi and Aahar "
+            "(Open Question 6: combine messes, don't pick one).",
+            "workflow.filter_by_meal_slot_and_day",
+            {"meal_slot": meal_slot, "weekday": weekday, "total_extracted": len(intake.extracted_items)},
+            f"{len(candidates)} item(s) belong to '{meal_slot}' on '{weekday}'.",
         )
-        return tags_by_name
 
-    def act_filter_and_score(self, prefs: UserPreferences, intake: MenuIntake, meal_slot: str, tags_by_name: dict[str, list[str]]) -> list[ScoredDish]:
         scored = []
-        for name in intake.extracted_items:
-            tags = tags_by_name.get(name, [])
-            if self.matcher.violates_dietary_restriction(name, tags, prefs):
+        for item in candidates:
+            tags = derive_tags_from_category(item.category, item.name)
+            if self.matcher.violates_dietary_restriction(item.name, tags, prefs):
                 self._log(
-                    f"Hard-exclude check for '{name}' runs before any scoring.",
+                    f"Hard-exclude check for '{item.name}' runs before any scoring.",
                     "matcher.violates_dietary_restriction",
-                    {"item": name, "tags": tags},
-                    f"'{name}' excluded — violates dietary_restrictions={prefs.dietary_restrictions}.",
+                    {"item": item.name, "tags": tags},
+                    f"'{item.name}' excluded — violates dietary_restrictions={prefs.dietary_restrictions}.",
                 )
                 continue
-            result = self.matcher.match_dish(name, tags, prefs)
+            result = self.matcher.match_dish(item.name, item.mess, tags, prefs)
             self._log(
-                f"'{name}' — exact match, then fuzzy match, then tag_weight fallback, in that order.",
+                f"'{item.name}' ({item.mess}) — exact match, then fuzzy match, then tag_weight fallback, in that order.",
                 "matcher.match_dish",
-                {"item": name, "tags": tags},
+                {"item": item.name, "mess": item.mess, "category": item.category, "tags": tags},
                 f"source={result.source} score={result.score} decision={result.decision}",
             )
             scored.append(result)
@@ -694,19 +705,22 @@ class ReActMealAgent:
         return prefs
 
     def act_schedule(self, meal_slot: str, event_date: date, scored: list[ScoredDish]) -> ScheduledMeal:
-        window = MESS_TIMING_WINDOWS[meal_slot]
-        default_start = DEFAULT_MEAL_START[meal_slot]
+        timings = load_mess_timings(self.fs)
+        window = timings[meal_slot]
+        default_start = window[0]
         selected = [s.name for s in scored if s.decision == "eat"]
+        top_picks = self.matcher.select_top_picks(scored)
+        top_pick_names = [s.name for s in top_picks]
 
         if not self.live:
-            description = self.matcher.build_event_description(scored)
+            description = self.matcher.build_event_description(scored, top_picks)
             self._log(
                 "Dry run — computing the schedule without touching live Calendar.",
                 "workflow.dry_run_schedule",
                 {"meal_slot": meal_slot, "window": [str(window[0]), str(window[1])]},
                 f"Would create event at {default_start} with: {description.replace(chr(10), ' | ')}",
             )
-            return ScheduledMeal(date=event_date, meal_slot=meal_slot, selected_items=selected, scheduled_time=default_start, conflict_resolved=True)
+            return ScheduledMeal(date=event_date, meal_slot=meal_slot, selected_items=selected, top_picks=top_pick_names, scheduled_time=default_start, conflict_resolved=True)
 
         try:
             existing = self.calendar.list_events_in_window(event_date, window)
@@ -723,7 +737,7 @@ class ReActMealAgent:
                 {"meal_slot": meal_slot},
                 f"Calendar unavailable ({exc}); recommendation computed but not pushed live this run.",
             )
-            return ScheduledMeal(date=event_date, meal_slot=meal_slot, selected_items=selected, scheduled_time=None, conflict_resolved=False)
+            return ScheduledMeal(date=event_date, meal_slot=meal_slot, selected_items=selected, top_picks=top_pick_names, scheduled_time=None, conflict_resolved=False)
 
         default_start_dt = datetime.combine(event_date, default_start)
         conflict = any(
@@ -757,116 +771,91 @@ class ReActMealAgent:
                     "No free slot in the entire window; scheduling at default time with a conflict flag.",
                 )
 
-        description = self.matcher.build_event_description(scored, conflict_flag=flagged)
+        description = self.matcher.build_event_description(scored, top_picks, conflict_flag=flagged)
         event_id = self.act_create_event(meal_slot, event_date, scheduled_time, description, flagged)
         return ScheduledMeal(
-            date=event_date, meal_slot=meal_slot, selected_items=selected,
+            date=event_date, meal_slot=meal_slot, selected_items=selected, top_picks=top_pick_names,
             calendar_event_id=event_id, scheduled_time=scheduled_time, conflict_resolved=conflict_resolved,
         )
 
     def act_create_event(self, meal_slot: str, event_date: date, start_time: dt_time, description: str, flagged: bool) -> Optional[str]:
-        action_input = {"meal_slot": meal_slot, "event_date": str(event_date), "start_time": str(start_time)}
+        # Deterministic, not random: a retry after a mid-request crash (event created,
+        # claim row never updated) reuses this exact id, so Calendar's 409 recovers it
+        # instead of creating a duplicate — see GoogleCalendarSkill.create_event_with_id.
+        event_id = deterministic_event_id(self.user_id, event_date.isoformat(), meal_slot)
+        action_input = {"meal_slot": meal_slot, "event_date": str(event_date), "start_time": str(start_time), "event_id": event_id}
         try:
-            event_id = self.calendar.create_meal_event(meal_slot, event_date, start_time, description, flagged)
+            created_id = self.calendar.create_event_with_id(event_id, meal_slot, event_date, start_time, description, flagged)
             self._log(
-                "Push the result into Calendar as the actual interface, per SKILL.md — no separate custom screen.",
-                "google_calendar.create_meal_event",
+                "Push the result into this user's own Calendar as the actual interface, per SKILL.md.",
+                "google_calendar.create_event_with_id",
                 action_input,
-                f"Created calendar event {event_id}.",
+                f"Created calendar event {created_id}.",
             )
-            return event_id
+            return created_id
         except (GoogleAuthUnavailable, HttpError) as exc:
             self._log(
-                "Push the result into Calendar as the actual interface, per SKILL.md — no separate custom screen.",
-                "google_calendar.create_meal_event",
+                "Push the result into this user's own Calendar as the actual interface, per SKILL.md.",
+                "google_calendar.create_event_with_id",
                 action_input,
                 f"Calendar unavailable ({exc}); recommendation is computed but not pushed to a live calendar this run.",
             )
             return None
 
-    def act_collect_response(self, event_id: Optional[str], simulated_response: Optional[str], simulated_note: Optional[str]) -> tuple[Optional[str], Optional[str]]:
-        if simulated_response is not None:
-            self._log(
-                "A concrete RSVP was supplied for this run instead of polling Calendar — "
-                "useful for exercising the feedback path without waiting on a live invite.",
-                "cli.simulated_response",
-                {"response": simulated_response, "note": simulated_note},
-                f"Treating RSVP as '{simulated_response}'" + (f" with note '{simulated_note}'." if simulated_note else "."),
-            )
-            return simulated_response, simulated_note
-
-        if event_id is None or not self.live:
-            self._log("No live event exists to poll.", "google_calendar.get_response", {"event_id": event_id}, "Skipped — nothing to check.")
-            return None, None
-        try:
-            response = self.calendar.get_response(event_id)
-        except (GoogleAuthUnavailable, HttpError) as exc:
-            self._log("Ask Calendar whether the student accepted, declined, or was tentative.", "google_calendar.get_response", {"event_id": event_id}, f"Could not read RSVP ({exc}); treating as pending.")
-            return None, None
-        self._log("Ask Calendar whether the student accepted, declined, or was tentative.", "google_calendar.get_response", {"event_id": event_id}, f"RSVP status: {response or 'pending'}.")
-        return response, None
-
-    def act_apply_feedback(self, prefs: UserPreferences, scored: list[ScoredDish], response: Optional[str], note: Optional[str], event_date: date) -> UserPreferences:
-        if response is None:
-            return prefs
-        eaten = [s for s in scored if s.decision == "eat"] or scored
-        for dish in eaten:
-            sentiment = None
-            if self.live and self.gemini.available:
-                try:
-                    sentiment = self.gemini.interpret_feedback_note(dish.name, response, note)
-                except Exception:
-                    sentiment = None
-            if sentiment is None:
-                sentiment = interpret_note_sentiment_naive(note)
-            prefs = self.matcher.apply_feedback(prefs, dish.name, response, note, sentiment, event_date)
-            self._log(
-                f"'{response.upper()}' for '{dish.name}' — first real feedback replaces an estimate "
-                "outright; later feedback nudges the running score by a fixed delta.",
-                "matcher.apply_feedback",
-                {"dish": dish.name, "response": response, "note": note, "note_sentiment": sentiment},
-                "known_dishes updated for this specific item.",
-            )
-        return prefs
-
     def act_persist_preferences(self, prefs: UserPreferences) -> None:
-        path = self._preferences_path()
-        payload = json.loads(prefs.model_dump_json())
-        payload["tag_weights"] = {}
-        self.fs.write_json(path, payload)
+        self.repo.save_preferences(self.user_id, prefs)
         self._log(
             "known_dishes may have changed this run; tag_weights is never persisted since it is "
             "derived fresh every run.",
-            "filesystem.write_json",
-            {"path": str(path)},
-            f"Wrote {len(prefs.known_dishes)} known dish(es) back to disk.",
+            "repository.save_preferences",
+            {"user_id": self.user_id},
+            f"Wrote {len(prefs.known_dishes)} known dish(es) back via the repository.",
         )
 
-    def act_mark_intake_processed(self, event_date: date) -> None:
-        path = self._menu_intake_path(event_date)
-        record = self.fs.read_json(path)
-        record["processed"] = True
-        self.fs.write_json(path, record)
-
-    def run(self, meal_slot: str, event_date: date, simulated_response: Optional[str] = None, simulated_note: Optional[str] = None) -> tuple[ScheduledMeal, Optional[str]]:
+    def run(self, meal_slot: str, event_date: date, cached_items: Optional[list[ExtractedDish]] = None) -> ScheduledMeal:
         prefs = self.perceive_preferences()
 
         if self.reason_skip_check(prefs, meal_slot):
-            self._log("Skip rule matched — halt before any Drive/Gemini/Calendar calls.", "workflow.halt", {"meal_slot": meal_slot}, "No event created; this meal slot is excluded by user preference.")
-            return ScheduledMeal(date=event_date, meal_slot=meal_slot, selected_items=[]), None
+            self._log("Skip rule matched — halt before any Gemini/Calendar calls.", "workflow.halt", {"meal_slot": meal_slot}, "No event created; this meal slot is excluded by user preference.")
+            return ScheduledMeal(date=event_date, meal_slot=meal_slot, selected_items=[])
 
-        intake = self.act_menu_intake(event_date)
-        tags_by_name = self.act_infer_tags(intake.extracted_items)
-        scored = self.act_filter_and_score(prefs, intake, meal_slot, tags_by_name)
+        intake = self.act_menu_intake(event_date, cached_items=cached_items)
+        scored = self.act_filter_and_score(prefs, intake, meal_slot, event_date)
         prefs = self.act_register_new_dishes(prefs, scored, event_date)
-        scheduled = self.act_schedule(meal_slot, event_date, scored)
-
-        response, note = self.act_collect_response(scheduled.calendar_event_id, simulated_response, simulated_note)
-        prefs = self.act_apply_feedback(prefs, scored, response, note, event_date)
-
         self.act_persist_preferences(prefs)
-        self.act_mark_intake_processed(event_date)
-        return scheduled, response
+        scheduled = self.act_schedule(meal_slot, event_date, scored)
+        return scheduled
+
+
+class FileRepository:
+    """Local-JSON-backed Repository, used only by main()'s CLI dry-run —
+    the real Postgres-backed Repository (agent/repository.py) is what the
+    web app and the weekly job use in production. Keeps the project's
+    long-standing "test against fixtures before touching anything live"
+    workflow working without a database."""
+
+    def __init__(self, fs: FilesystemTool, user_id: str):
+        self.fs = fs
+        self.user_id = user_id
+
+    def _preferences_path(self) -> Path:
+        return DATA_DIR / f"preferences_{self.user_id}.json"
+
+    def load_preferences(self, user_id: str) -> UserPreferences:
+        return UserPreferences(**self.fs.read_json(self._preferences_path()))
+
+    def save_preferences(self, user_id: str, prefs: UserPreferences) -> None:
+        payload = json.loads(prefs.model_dump_json())
+        payload["tag_weights"] = {}
+        self.fs.write_json(self._preferences_path(), payload)
+
+    def get_menu_intake(self, event_date: date) -> Optional[MenuIntake]:
+        path = DATA_DIR / "menu_intake_sample.json"
+        if not path.exists():
+            return None
+        intake = MenuIntake(**self.fs.read_json(path))
+        intake.date = event_date
+        return intake
 
 
 def main() -> None:
@@ -877,28 +866,41 @@ def main() -> None:
 
     meal_slot = args[0] if len(args) > 0 else "lunch"
     event_date = date.fromisoformat(args[1]) if len(args) > 1 else date(2026, 9, 18)
-    simulated_response = args[2] if len(args) > 2 else None
-    simulated_note = args[3] if len(args) > 3 else None
+    user_id = args[2] if len(args) > 2 else "u001"
 
     if not live:
-        print("Running in DRY RUN mode (default) — no live Drive/Gemini/Calendar calls will be made.")
-        print("Pass --live to hit the real APIs, e.g.: python3 react_agent.py lunch 2026-09-18 yes --live\n")
+        print("Running in DRY RUN mode (default) — no live Calendar calls; preferences/menu are")
+        print("read from the local agent/data/*.json fixtures, not Postgres.")
+        print("Pass --live to run against a real DB-backed user's Calendar, e.g.:")
+        print("  python3 -m agent.react_agent lunch 2026-09-18 <user-uuid> --live\n")
+
+    calendar_skill: Optional[GoogleCalendarSkill]
+    if live:
+        from agent.db import get_sessionmaker
+        from agent.repository import Repository
+
+        db = get_sessionmaker()()
+        repo: AgentRepository = Repository(db)
+        credentials = repo.build_user_credentials(user_id)  # type: ignore[attr-defined]
+        calendar_skill = GoogleCalendarSkill(credentials=credentials)
+    else:
+        repo = FileRepository(FilesystemTool(), user_id)
+        calendar_skill = None  # the dry-run branch of act_schedule never touches self.calendar
 
     agent = ReActMealAgent(
-        user_id="u001",
-        drive_skill=GoogleDriveMenuImageSkill(),
-        calendar_skill=GoogleCalendarSkill(),
+        user_id=user_id,
+        calendar_skill=calendar_skill,
         gemini_skill=GeminiSkill(),
         matcher=MenuPreferenceMatchingSkill(),
         fs=FilesystemTool(),
+        repo=repo,
         live=live,
     )
 
-    scheduled, response = agent.run(meal_slot, event_date, simulated_response=simulated_response, simulated_note=simulated_note)
+    scheduled = agent.run(meal_slot, event_date)
 
     print("\n=== Final ScheduledMeal ===")
     print(scheduled.model_dump_json(indent=2))
-    print(f"response: {response}")
 
 
 if __name__ == "__main__":

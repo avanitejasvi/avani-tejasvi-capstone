@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Rate past meals — meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    .meal { border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
+    .meal form { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+    button { padding: 6px 12px; }
+    input[type=text] { flex: 1; min-width: 160px; padding: 6px; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">&larr; Home</a></nav>
+  <h1>Rate your past meals</h1>
+  <p>This is the only thing that can raise a dish's rating from real experience —
+     without it, the agent can only ever learn that you disliked something (by noticing
+     you cancelled the event), never that you liked it.</p>
+
+  {% if not rows %}
+  <p>Nothing pending right now.</p>
+  {% endif %}
+
+  {% for row in rows %}
+  <div class="meal">
+    <strong>{{ row.event_date.isoformat() }} — {{ row.meal_slot.replace('_', ' ') }}</strong><br>
+    {{ row.top_picks | join(", ") }}
+    <form method="post" action="/feedback/{{ row.id }}">
+      <input type="text" name="note" placeholder="optional note, e.g. &quot;too spicy&quot;">
+      <button name="response" value="yes">Ate it, liked it</button>
+      <button name="response" value="maybe">Ate it, unsure</button>
+      <button name="response" value="no">Skipped it</button>
+    </form>
+  </div>
+  {% endfor %}
+</body>
+</html>
