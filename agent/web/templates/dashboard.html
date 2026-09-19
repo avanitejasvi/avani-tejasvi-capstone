@@ -17,7 +17,8 @@
     <a href="/">Home</a>
     <a href="/menu/upload">Upload menu</a>
     <a href="/feedback">Rate past meals{% if pending_feedback_count %} ({{ pending_feedback_count }}){% endif %}</a>
-    <a href="/settings">Settings</a>
+    <a href="/preferences">Preferences</a>
+    <a href="/settings">Account settings</a>
     <a href="/auth/logout">Log out</a>
   </nav>
   <h1>Hi{% if user.display_name %}, {{ user.display_name }}{% endif %}</h1>
@@ -49,6 +50,6 @@
   {% endif %}
 
   <p>Your Calendar gets this week's mess picks automatically every Monday morning.
-     Adjust what gets scheduled in <a href="/settings">Settings</a>.</p>
+     Adjust what gets scheduled in <a href="/preferences">Preferences</a>.</p>
 </body>
 </html>

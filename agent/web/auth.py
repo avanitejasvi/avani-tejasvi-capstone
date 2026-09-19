@@ -110,7 +110,7 @@ def callback(request: Request, db: Session = Depends(get_db)):
     request.session["user_id"] = str(user.id)
 
     if not repo.is_onboarded(user.id):
-        return RedirectResponse("/settings", status_code=302)
+        return RedirectResponse("/preferences", status_code=302)
     return RedirectResponse("/", status_code=302)
 
 

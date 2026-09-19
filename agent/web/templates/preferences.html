@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Preferences — meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    label { display: block; margin: 16px 0 4px; font-weight: 600; }
+    input[type=text] { width: 100%; padding: 8px; box-sizing: border-box; }
+    .slot { display: block; margin: 4px 0; font-weight: normal; }
+    button { margin-top: 20px; padding: 8px 16px; }
+    .muted { font-weight: normal; color: #555; margin: 0 0 20px; }
+    .question { border-top: 1px solid #eee; padding-top: 16px; margin-top: 16px; }
+    .question .help { font-weight: normal; font-size: 0.9em; color: #666; margin: 2px 0 8px; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">&larr; Home</a> · <a href="/settings">Account settings</a></nav>
+  <h1>Preferences</h1>
+  <p>These decide what the weekly job schedules for you, {{ user.display_name or user.email }}.</p>
+  <p class="muted">The questions below use dishes that were actually on this week's board — answers go straight
+     into the same preference data the weekly matching already reads, they don't create anything new.</p>
+
+  <form method="post" action="/preferences">
+    {% for q in questions %}
+    <div class="question">
+      <label>{{ q.prompt }}</label>
+      {% if q.help %}<p class="help">{{ q.help }}</p>{% endif %}
+      {% if q.kind == 'text' %}
+      <input type="text" name="{{ q.id }}" placeholder="optional">
+      {% else %}
+        {% for opt in q.options %}
+        <label class="slot">
+          <input type="{{ 'checkbox' if q.kind == 'multi' else 'radio' }}" name="{{ q.id }}" value="{{ opt.value }}">
+          {{ opt.label }}
+        </label>
+        {% endfor %}
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    <div class="question">
+      <label for="dietary_restrictions">Anything else to hard-exclude? (comma-separated, e.g. an allergy not covered above)</label>
+      <input type="text" id="dietary_restrictions" name="dietary_restrictions"
+             value="{{ prefs.dietary_restrictions | join(', ') }}">
+    </div>
+
+    <div class="question">
+      <label>Meal slots to always skip</label>
+      {% for slot in meal_slots %}
+      <label class="slot">
+        <input type="checkbox" name="skip_meal_slots" value="{{ slot }}"
+               {% if slot in prefs.skip_meal_slots %}checked{% endif %}>
+        {{ slot.replace('_', ' ') }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <button type="submit">Save</button>
+  </form>
+</body>
+</html>

@@ -2,76 +2,55 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Settings — meal-match-agent</title>
+  <title>Account settings — meal-match-agent</title>
   <style>
     body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
     label { display: block; margin: 16px 0 4px; font-weight: 600; }
     input[type=text] { width: 100%; padding: 8px; box-sizing: border-box; }
     .slot { display: block; margin: 4px 0; font-weight: normal; }
     button { margin-top: 20px; padding: 8px 16px; }
-    .muted { font-weight: normal; color: #555; margin: 0 0 20px; }
-    .question { border-top: 1px solid #eee; padding-top: 16px; margin-top: 16px; }
-    .question .help { font-weight: normal; font-size: 0.9em; color: #666; margin: 2px 0 8px; }
+    section { border-top: 1px solid #eee; padding-top: 16px; margin-top: 24px; }
+    .danger { border-color: #e5484d; }
+    .danger button { background: #e5484d; color: #fff; border: none; border-radius: 6px; }
+    .danger p { font-weight: normal; color: #555; }
   </style>
 </head>
 <body>
-  <nav><a href="/">&larr; Home</a></nav>
-  <h1>Settings</h1>
-  <p>These apply to every meal the weekly job schedules for you, {{ user.display_name or user.email }}.</p>
-  <p class="muted">The questions below use dishes that were actually on this week's board — answers go straight
-     into the same preference data the weekly matching already reads, they don't create anything new.</p>
+  <nav><a href="/">&larr; Home</a> · <a href="/preferences">Preferences</a></nav>
+  <h1>Account settings</h1>
+  <p>Signed in as {{ user.display_name or user.email }}.</p>
 
-  <form method="post" action="/settings">
-    {% for q in questions %}
-    <div class="question">
-      <label>{{ q.prompt }}</label>
-      {% if q.help %}<p class="help">{{ q.help }}</p>{% endif %}
-      {% if q.kind == 'text' %}
-      <input type="text" name="{{ q.id }}" placeholder="optional">
-      {% else %}
-        {% for opt in q.options %}
-        <label class="slot">
-          <input type="{{ 'checkbox' if q.kind == 'multi' else 'radio' }}" name="{{ q.id }}" value="{{ opt.value }}">
-          {{ opt.label }}
-        </label>
+  <section>
+    <form method="post" action="/settings">
+      <label for="llm_provider">Use your own AI key for feedback rating (optional)</label>
+      <p style="font-weight: normal; margin: 0 0 8px;">
+        {% if current_llm_provider %}
+          Currently using your own <strong>{{ current_llm_provider }}</strong> key.
+          Leave the key field blank to keep it, or tick "remove" below to clear it.
+        {% else %}
+          Not set — feedback rating uses a shared key by default. Add your own below if you'd rather it use yours.
+        {% endif %}
+      </p>
+      <select name="llm_provider">
+        {% for p in llm_providers %}
+        <option value="{{ p }}" {% if p == current_llm_provider %}selected{% endif %}>{{ p }}</option>
         {% endfor %}
-      {% endif %}
-    </div>
-    {% endfor %}
+      </select>
+      <input type="text" id="llm_api_key" name="llm_api_key" placeholder="paste your API key here">
+      <label class="slot"><input type="checkbox" name="remove_llm_key"> Remove my saved key</label>
 
-    <div class="question">
-      <label for="dietary_restrictions">Anything else to hard-exclude? (comma-separated, e.g. an allergy not covered above)</label>
-      <input type="text" id="dietary_restrictions" name="dietary_restrictions"
-             value="{{ prefs.dietary_restrictions | join(', ') }}">
-    </div>
+      <button type="submit">Save</button>
+    </form>
+  </section>
 
-    <label>Meal slots to always skip</label>
-    {% for slot in meal_slots %}
-    <label class="slot">
-      <input type="checkbox" name="skip_meal_slots" value="{{ slot }}"
-             {% if slot in prefs.skip_meal_slots %}checked{% endif %}>
-      {{ slot.replace('_', ' ') }}
-    </label>
-    {% endfor %}
-
-    <label for="llm_provider">Use your own AI key for feedback rating (optional)</label>
-    <p style="font-weight: normal; margin: 0 0 8px;">
-      {% if current_llm_provider %}
-        Currently using your own <strong>{{ current_llm_provider }}</strong> key.
-        Leave the key field blank to keep it, or tick "remove" below to clear it.
-      {% else %}
-        Not set — feedback rating uses a shared key by default. Add your own below if you'd rather it use yours.
-      {% endif %}
-    </p>
-    <select name="llm_provider">
-      {% for p in llm_providers %}
-      <option value="{{ p }}" {% if p == current_llm_provider %}selected{% endif %}>{{ p }}</option>
-      {% endfor %}
-    </select>
-    <input type="text" id="llm_api_key" name="llm_api_key" placeholder="paste your API key here">
-    <label class="slot"><input type="checkbox" name="remove_llm_key"> Remove my saved key</label>
-
-    <button type="submit">Save</button>
-  </form>
+  <section class="danger">
+    <h2>Delete account</h2>
+    <p>Permanently removes your saved preferences, upload/scheduling history, and any AI key you've added —
+       and revokes this app's access to your Google Calendar. This can't be undone.</p>
+    <form method="post" action="/settings/delete"
+          onsubmit="return confirm('Delete your account and revoke Calendar access? This can\'t be undone.');">
+      <button type="submit">Delete my account</button>
+    </form>
+  </section>
 </body>
 </html>

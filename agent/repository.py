@@ -10,7 +10,7 @@ from datetime import date
 from typing import Optional
 
 from google.oauth2.credentials import Credentials
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -99,6 +99,15 @@ class Repository:
     def has_valid_token(self, user_id) -> bool:
         token = self.db.get(OAuthToken, user_id)
         return token is not None and not token.needs_reauth
+
+    def get_raw_refresh_token(self, user_id) -> Optional[str]:
+        """Decrypted refresh token, for revoking with Google directly —
+        build_user_credentials wraps it in a Credentials object instead,
+        which isn't what a revoke call needs."""
+        token = self.db.get(OAuthToken, user_id)
+        if token is None:
+            return None
+        return decrypt_token(token.encrypted_refresh_token)
 
     def build_user_credentials(self, user_id) -> Credentials:
         token = self.db.get(OAuthToken, user_id)
@@ -300,3 +309,20 @@ class Repository:
         if row is not None:
             row.feedback_applied = True
             self.db.commit()
+
+    # --- account deletion --------------------------------------------------
+
+    def delete_user(self, user_id) -> None:
+        """Removes everything personal to this user. menu_intake is shared,
+        weekly-board data, not personal — its uploaded_by attribution is
+        cleared instead of deleting the (still-in-use) shared row. Caller is
+        responsible for revoking the Google grant first (see
+        get_raw_refresh_token) — this only removes our own copy of it."""
+        self.db.execute(update(MenuIntakeRow).where(MenuIntakeRow.uploaded_by == user_id).values(uploaded_by=None))
+        self.db.execute(delete(ScheduledMealRow).where(ScheduledMealRow.user_id == user_id))
+        self.db.execute(delete(PendingMenuUpload).where(PendingMenuUpload.user_id == user_id))
+        self.db.execute(delete(UserLLMKey).where(UserLLMKey.user_id == user_id))
+        self.db.execute(delete(OAuthToken).where(OAuthToken.user_id == user_id))
+        self.db.execute(delete(Preferences).where(Preferences.user_id == user_id))
+        self.db.execute(delete(User).where(User.id == user_id))
+        self.db.commit()
