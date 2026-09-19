@@ -1,0 +1,16 @@
+# Explicit Nixpacks config. Nixpacks' own auto-detection was producing a
+# broken generated Dockerfile ("ENV names can not be blank") — most likely
+# because requirements.txt lives at agent/requirements.txt, not the repo
+# root, which its Python provider doesn't expect. Spelling out the setup/
+# install/start phases directly removes the ambiguity instead of hoping
+# auto-detection guesses right.
+providers = ["python"]
+
+[phases.setup]
+nixPkgs = ["python311"]
+
+[phases.install]
+cmds = ["pip install -r agent/requirements.txt"]
+
+[start]
+cmd = "uvicorn agent.web.app:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=\"*\""

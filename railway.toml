@@ -9,10 +9,10 @@
 #     No Volume on either service — see agent/web/routes_menu.py, images are
 #     never persisted.
 
-[build]
-builder = "NIXPACKS"
-buildCommand = "pip install -r agent/requirements.txt"
+# Build steps (setup/install/start) live in nixpacks.toml at the repo root —
+# Nixpacks' own auto-detection was generating a broken Dockerfile since
+# requirements.txt isn't at the repo root, so it's now spelled out
+# explicitly there instead of duplicated/possibly conflicting with this file.
 
 [deploy]
-startCommand = "uvicorn agent.web.app:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips=\"*\""
 restartPolicyType = "ON_FAILURE"
