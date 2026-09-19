@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Weekly check-in — meal-match-agent</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
+    label { display: block; margin: 16px 0 4px; font-weight: 600; }
+    select { width: 100%; padding: 8px; box-sizing: border-box; }
+    .slot { display: block; margin: 4px 0; font-weight: normal; }
+    button { margin-top: 20px; padding: 8px 16px; }
+    .muted { font-weight: normal; color: #555; margin: 0 0 20px; }
+    .question { border-top: 1px solid #eee; padding-top: 16px; margin-top: 16px; }
+  </style>
+</head>
+<body>
+  <nav><a href="/">&larr; Home</a> · <a href="/preferences">Baseline profile</a></nav>
+  <h1>Weekly check-in</h1>
+  <p class="muted">A quick take on what's actually on the board this week. These answers count as real
+     experience — same as rating a past meal — not a change to your baseline profile.</p>
+
+  {% if not has_menu %}
+  <p>No menu has been uploaded for this week yet. <a href="/menu/upload">Upload it</a> first, then come back.</p>
+  {% elif not candidates %}
+  <p>Nothing on this week's board is uncertain enough right now to need a check-in — your baseline profile already
+     covers it. Check back once new dishes show up.</p>
+  {% else %}
+  <form method="post" action="/checkin">
+    <div class="question">
+      <label>Which of these would you be most likely to choose this week?</label>
+      {% for item in candidates %}
+      <label class="slot"><input type="checkbox" name="would_choose" value="{{ item.name }}"> {{ item.name }} <span class="muted">({{ item.mess }})</span></label>
+      {% endfor %}
+    </div>
+
+    <div class="question">
+      <label>Anything here you'd actively skip?</label>
+      {% for item in candidates %}
+      <label class="slot"><input type="checkbox" name="would_skip" value="{{ item.name }}"> {{ item.name }}</label>
+      {% endfor %}
+    </div>
+
+    <div class="question">
+      <label>If you had to pick just one over the others, which?</label>
+      <select name="pick_favorite">
+        <option value="">No strong pick</option>
+        {% for item in candidates %}
+        <option value="{{ item.name }}">{{ item.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    {% if repeats %}
+    <div class="question">
+      <label>Anything you've had too often recently?</label>
+      {% for dish in repeats %}
+      <label class="slot"><input type="checkbox" name="too_often" value="{{ dish.name }}"> {{ dish.name }} <span class="muted">(eaten {{ dish.times_eaten }}x recently)</span></label>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <button type="submit">Submit check-in</button>
+  </form>
+  {% endif %}
+</body>
+</html>

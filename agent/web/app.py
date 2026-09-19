@@ -12,7 +12,7 @@ from agent.models_db import User
 from agent.repository import Repository
 from agent.timezone import today_ist, week_start_ist
 from agent.web import auth as auth_routes
-from agent.web import routes_feedback, routes_menu, routes_preferences, routes_settings
+from agent.web import routes_checkin, routes_feedback, routes_menu, routes_preferences, routes_settings
 from agent.web.deps import NotAuthenticated, get_current_user
 
 app = FastAPI(title="meal-match-agent")
@@ -31,6 +31,7 @@ templates = Jinja2Templates(directory="agent/web/templates")
 
 app.include_router(auth_routes.router)
 app.include_router(routes_preferences.router)
+app.include_router(routes_checkin.router)
 app.include_router(routes_settings.router)
 app.include_router(routes_menu.router)
 app.include_router(routes_feedback.router)

@@ -15,11 +15,13 @@
   </style>
 </head>
 <body>
-  <nav><a href="/">&larr; Home</a> · <a href="/settings">Account settings</a></nav>
-  <h1>Preferences</h1>
-  <p>These decide what the weekly job schedules for you, {{ user.display_name or user.email }}.</p>
-  <p class="muted">The questions below use dishes that were actually on this week's board — answers go straight
-     into the same preference data the weekly matching already reads, they don't create anything new.</p>
+  <nav><a href="/">&larr; Home</a> · <a href="/checkin">Weekly check-in</a> · <a href="/settings">Account settings</a></nav>
+  <h1>Preferences (baseline profile)</h1>
+  <p>This is who you are as an eater — stable stuff that doesn't change week to week, {{ user.display_name or user.email }}.
+     For "what do I feel like eating <em>this</em> week," use <a href="/checkin">Weekly check-in</a> instead —
+     that one looks at the actual current board, not these examples.</p>
+  <p class="muted">The example dishes below are grounded in a real two-week board, just not necessarily this week's —
+     answers go straight into the same preference data the weekly matching already reads, they don't create anything new.</p>
 
   <form method="post" action="/preferences">
     {% for q in questions %}

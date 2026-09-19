@@ -69,6 +69,7 @@ class Question:
     prompt: str
     help: Optional[str] = None
     options: tuple = ()
+    label: Optional[str] = None  # short prefix used for "text" kind comment lines
 
 
 QUESTIONS = [
@@ -200,6 +201,24 @@ QUESTIONS = [
         ),
     ),
     Question(
+        id="rice_vs_roti",
+        kind="single",
+        prompt="For your main starch, rice or roti?",
+        help='Real options: "Plain Rice" vs "Phulka".',
+        options=(
+            Option("rice", "Usually rice", seeds=(Seed("Plain Rice", "Rice", LIKE), Seed("Phulka", "Phulka", DISLIKE))),
+            Option("roti", "Usually roti/phulka", seeds=(Seed("Phulka", "Phulka", LIKE), Seed("Plain Rice", "Rice", DISLIKE))),
+            Option("both", "Both, no strong lean", seeds=(Seed("Plain Rice", "Rice", LIKE), Seed("Phulka", "Phulka", LIKE))),
+        ),
+    ),
+    Question(
+        id="routine_timing",
+        kind="text",
+        prompt="Any routine timing quirks worth knowing?",
+        help='E.g. "always skip breakfast before 9am", "lunch is usually late, after 2pm", "rarely free before dinner". Recorded as a note only — the weekly job already checks your real Calendar for conflicts, so this doesn\'t change scheduling logic, just gives a human reader context.',
+        label="Routine timing",
+    ),
+    Question(
         id="dessert_frequency",
         kind="single",
         prompt="There's a dessert most days here — do you want one every time, or only sometimes?",
@@ -254,6 +273,7 @@ QUESTIONS = [
         id="anything_else",
         kind="text",
         prompt="Anything else worth knowing? (e.g. \"I like X only when it's not too oily\", or a dish you love that isn't on this board)",
+        label="Note",
     ),
 ]
 
@@ -290,7 +310,7 @@ def apply_answers(prefs: UserPreferences, form) -> UserPreferences:
         if q.kind == "text":
             value = (form.get(q.id) or "").strip()
             if value:
-                comment_lines.append(f"Note: {value}")
+                comment_lines.append(f"{q.label or 'Note'}: {value}")
             continue
 
         selected = form.getlist(q.id) if q.kind == "multi" else [v for v in [form.get(q.id)] if v]
