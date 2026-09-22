@@ -11,7 +11,6 @@
     input[type=text] { flex: 1; min-width: 160px; padding: 6px; }
     section { margin-top: 32px; }
     .dish-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid #eee; gap: 8px; }
-    .dish-row form { display: flex; gap: 6px; align-items: center; }
     .muted { color: #666; font-size: 0.9em; }
     select { padding: 4px; }
   </style>
@@ -46,64 +45,72 @@
     {% endfor %}
   </section>
 
-  <section>
-    <h2>Likes <span class="muted">({{ summary.likes | length }})</span></h2>
-    {% if not summary.likes %}<p class="muted">None confirmed yet.</p>{% endif %}
-    {% for dish in summary.likes %}
-    <div class="dish-row">
-      <span>{{ dish.name }} <span class="muted">({{ dish.rating }})</span></span>
-      <form method="post" action="/feedback/edit">
-        <input type="hidden" name="dish_name" value="{{ dish.name }}">
-        <select name="choice">
-          <option value="like" selected>Like</option>
-          <option value="neutral">Neutral</option>
-          <option value="avoid">Avoid</option>
-        </select>
-        <button type="submit">Update</button>
-      </form>
-    </div>
-    {% endfor %}
-  </section>
+  {% set has_any = summary.likes or summary.avoids or summary.learning %}
+  <form method="post" action="/feedback/edit">
+    <section>
+      <h2>Likes <span class="muted">({{ summary.likes | length }})</span></h2>
+      {% if not summary.likes %}<p class="muted">None confirmed yet.</p>{% endif %}
+      {% for dish in summary.likes %}
+      <div class="dish-row">
+        <span>{{ dish.name }} <span class="muted">({{ dish.rating }})</span></span>
+        <span>
+          <input type="hidden" name="dish_name" value="{{ dish.name }}">
+          <input type="hidden" name="current" value="like">
+          <select name="choice">
+            <option value="like" selected>Like</option>
+            <option value="neutral">Neutral</option>
+            <option value="avoid">Avoid</option>
+          </select>
+        </span>
+      </div>
+      {% endfor %}
+    </section>
 
-  <section>
-    <h2>Avoids <span class="muted">({{ summary.avoids | length }})</span></h2>
-    {% if not summary.avoids %}<p class="muted">None confirmed yet.</p>{% endif %}
-    {% for dish in summary.avoids %}
-    <div class="dish-row">
-      <span>{{ dish.name }} <span class="muted">({{ dish.rating }})</span></span>
-      <form method="post" action="/feedback/edit">
-        <input type="hidden" name="dish_name" value="{{ dish.name }}">
-        <select name="choice">
-          <option value="like">Like</option>
-          <option value="neutral">Neutral</option>
-          <option value="avoid" selected>Avoid</option>
-        </select>
-        <button type="submit">Update</button>
-      </form>
-    </div>
-    {% endfor %}
-  </section>
+    <section>
+      <h2>Avoids <span class="muted">({{ summary.avoids | length }})</span></h2>
+      {% if not summary.avoids %}<p class="muted">None confirmed yet.</p>{% endif %}
+      {% for dish in summary.avoids %}
+      <div class="dish-row">
+        <span>{{ dish.name }} <span class="muted">({{ dish.rating }})</span></span>
+        <span>
+          <input type="hidden" name="dish_name" value="{{ dish.name }}">
+          <input type="hidden" name="current" value="avoid">
+          <select name="choice">
+            <option value="like">Like</option>
+            <option value="neutral">Neutral</option>
+            <option value="avoid" selected>Avoid</option>
+          </select>
+        </span>
+      </div>
+      {% endfor %}
+    </section>
 
-  <section>
-    <h2>Still learning <span class="muted">({{ summary.learning | length }})</span></h2>
-    <p class="muted">System guesses from related dishes/tags — not yet confirmed by you.
-       These stay eligible for a future <a href="/checkin">weekly check-in</a> question, or you can settle one now.</p>
-    {% if not summary.learning %}<p class="muted">Nothing being inferred right now.</p>{% endif %}
-    {% for dish in summary.learning %}
-    <div class="dish-row">
-      <span>{{ dish.name }} <span class="muted">(estimated {{ dish.rating }})</span></span>
-      <form method="post" action="/feedback/edit">
-        <input type="hidden" name="dish_name" value="{{ dish.name }}">
-        <select name="choice">
-          <option value="like">Like</option>
-          <option value="neutral">Neutral</option>
-          <option value="avoid">Avoid</option>
-        </select>
-        <button type="submit">Confirm</button>
-      </form>
-    </div>
-    {% endfor %}
-  </section>
+    <section>
+      <h2>Still learning <span class="muted">({{ summary.learning | length }})</span></h2>
+      <p class="muted">System guesses from related dishes/tags — not yet confirmed by you.
+         These stay eligible for a future <a href="/checkin">weekly check-in</a> question, or you can settle a few now.</p>
+      {% if not summary.learning %}<p class="muted">Nothing being inferred right now.</p>{% endif %}
+      {% for dish in summary.learning %}
+      <div class="dish-row">
+        <span>{{ dish.name }} <span class="muted">(estimated {{ dish.rating }})</span></span>
+        <span>
+          <input type="hidden" name="dish_name" value="{{ dish.name }}">
+          <input type="hidden" name="current" value="neutral">
+          <select name="choice">
+            <option value="like">Like</option>
+            <option value="neutral" selected>Neutral</option>
+            <option value="avoid">Avoid</option>
+          </select>
+        </span>
+      </div>
+      {% endfor %}
+    </section>
+
+    {% if has_any %}
+    <button type="submit" style="margin-top: 24px;">Save changes</button>
+    <p class="muted">Only dishes you actually change get applied — leaving a selection as-is doesn't re-rate it.</p>
+    {% endif %}
+  </form>
 
   {% if summary.unknown_count %}
   <p class="muted">Plus {{ summary.unknown_count }} dish(es) on recent menus the system doesn't have

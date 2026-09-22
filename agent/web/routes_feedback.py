@@ -60,19 +60,31 @@ def feedback_list(request: Request, user: User = Depends(get_current_user), db: 
 
 @router.post("/edit")
 async def edit_preference(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """A direct profile edit — the summary's like/neutral/avoid control.
-    Reuses apply_feedback exactly as check-in's manual choices already do,
-    rather than a second rating scale, so an explicit edit here sets
-    confidence="confirmed" the same way any other real response does."""
+    """A batch profile edit — one submit for the whole Likes/Avoids/Still
+    learning summary instead of a button per dish. Each row posts its dish
+    name, a "current" value (which section it started in), and the
+    selected "choice"; only rows where choice != current get applied.
+    apply_feedback isn't idempotent (it bumps times_eaten/rating on every
+    real call), so resubmitting every row's already-current value on a
+    plain "Save changes" with nothing touched must be a no-op."""
     form = await request.form()
-    dish_name = (form.get("dish_name") or "").strip()
-    choice = form.get("choice")
-    if dish_name and choice in EDIT_RESPONSE:
+    dish_names = form.getlist("dish_name")
+    currents = form.getlist("current")
+    choices = form.getlist("choice")
+
+    if len(dish_names) == len(currents) == len(choices):
         matcher = MenuPreferenceMatchingSkill()
         repo = Repository(db)
         prefs = repo.load_preferences(user.id)
-        prefs = matcher.apply_feedback(prefs, dish_name, EDIT_RESPONSE[choice], None, "neutral", today_ist())
-        repo.save_preferences(user.id, prefs)
+        today = today_ist()
+        changed = False
+        for dish_name, current, choice in zip(dish_names, currents, choices):
+            if choice == current or choice not in EDIT_RESPONSE:
+                continue
+            prefs = matcher.apply_feedback(prefs, dish_name.strip(), EDIT_RESPONSE[choice], None, "neutral", today)
+            changed = True
+        if changed:
+            repo.save_preferences(user.id, prefs)
     return RedirectResponse("/feedback", status_code=302)
 
 
