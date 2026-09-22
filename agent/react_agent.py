@@ -23,6 +23,11 @@ DATA_DIR = BASE_DIR / "data"
 
 EAT_THRESHOLD = 3.0
 RATING_MIN, RATING_MAX = 0.0, 5.0
+# A dish scoring above this but still below EAT_THRESHOLD isn't confirmed
+# disliked either (DISLIKE=2.0 and RESPONSE_BASELINE["no"]=1.5 both land at
+# or below it) — only used as a fallback recommendation tier, and only when
+# nothing on the menu clears EAT_THRESHOLD at all. See select_fallback_picks.
+FALLBACK_THRESHOLD = 2.0
 
 # Open Question 1 (skills.md): fuzzy-match threshold. 0.85 on a normalized
 # (lowercase, whitespace-collapsed) difflib ratio cleanly separates OCR noise
@@ -169,7 +174,11 @@ class ScheduledMeal(BaseModel):
     date: date
     meal_slot: str
     selected_items: list[str]
-    top_picks: list[str] = Field(default_factory=list)  # subset of selected_items actually named in the event description
+    # Whatever's actually named in the event description — normally a subset
+    # of selected_items (decision="eat"), but when there's no eat pick at all
+    # this holds the fallback picks instead (see act_schedule), which are
+    # NOT in selected_items since their decision is still "skip".
+    top_picks: list[str] = Field(default_factory=list)
     calendar_event_id: Optional[str] = None
     scheduled_time: Optional[dt_time] = None
     conflict_resolved: bool = False
@@ -479,6 +488,18 @@ class GoogleCalendarSkill:
                 return self._recover_from_conflict(event_id, body, send_updates="none")
             raise
 
+    def update_description(self, event_id: str, description: str) -> None:
+        """Refreshes just an already-scheduled event's description (e.g.
+        after preferences changed since it was created) — a targeted patch,
+        not create_event_with_id's full create/revive path, so it never
+        touches the event's time, attendee, or RSVP state."""
+        try:
+            self.service.events().patch(calendarId=self.calendar_id, eventId=event_id, body={"description": description}).execute()
+        except HttpError as exc:
+            if exc.resp.status == 404:
+                return  # deleted since scheduling — nothing to refresh
+            raise
+
     def get_event_status(self, event_id: str) -> Optional[str]:
         """Returns None if the event no longer exists (404), else its status
         ("confirmed" or "cancelled"). A cheap existence check — get_response
@@ -638,19 +659,37 @@ class MenuPreferenceMatchingSkill:
         eat_items = sorted((s for s in scored if s.decision == "eat"), key=lambda s: s.score, reverse=True)
         return eat_items[:top_n]
 
-    def build_event_description(self, scored: list[ScoredDish], top_picks: list[ScoredDish], conflict_flag: bool = False) -> str:
+    def select_fallback_picks(self, scored: list[ScoredDish], top_n: int = 3) -> list[ScoredDish]:
+        """Only meant to be called when select_top_picks found nothing —
+        a middle tier (FALLBACK_THRESHOLD < score < EAT_THRESHOLD) that
+        isn't confirmed disliked, just not confidently "eat" either, so a
+        thin-signal day still names plausible options instead of nothing.
+        Never a substitute for a real eat pick — strictly a last resort."""
+        candidates = sorted(
+            (s for s in scored if FALLBACK_THRESHOLD < s.score < EAT_THRESHOLD),
+            key=lambda s: s.score, reverse=True,
+        )
+        return candidates[:top_n]
+
+    def build_event_description(
+        self, scored: list[ScoredDish], top_picks: list[ScoredDish],
+        fallback_picks: Optional[list[ScoredDish]] = None, conflict_flag: bool = False,
+    ) -> str:
         """Kept deliberately compact: a single short line naming the top-scoring
         picks and which mess each is from, not a full category breakdown — a
         RSVP is per-event, so a shorter list keeps YES/NO/MAYBE meaningful.
-        Feedback later only ever targets what's named here (top_picks), never
-        the full eat-decision list, so a YES/NO/MAYBE can't silently rate
-        dishes the student never actually saw."""
+        Feedback later only ever targets what's named here (top_picks or, when
+        there are none, fallback_picks), never the full eat-decision list, so
+        a YES/NO/MAYBE can't silently rate dishes the student never actually saw."""
         eat_count = sum(1 for s in scored if s.decision == "eat")
         if top_picks:
             picks = ", ".join(f"{s.name} [{s.mess}] {s.score:.1f}" for s in top_picks)
             line = f"Top picks: {picks}"
             if eat_count > len(top_picks):
                 line += f" (+{eat_count - len(top_picks)} more matched)"
+        elif fallback_picks:
+            picks = ", ".join(f"{s.name} [{s.mess}] {s.score:.1f}" for s in fallback_picks)
+            line = f"No confident picks today — closest options: {picks}"
         else:
             line = "No confident picks today — mostly new or no-data dishes."
         if conflict_flag:
@@ -826,10 +865,13 @@ class ReActMealAgent:
         default_start = window[0]
         selected = [s.name for s in scored if s.decision == "eat"]
         top_picks = self.matcher.select_top_picks(scored)
-        top_pick_names = [s.name for s in top_picks]
+        # Only computed/named when there's no real eat pick at all — a
+        # last-resort suggestion, never a second recommendation tier.
+        fallback_picks = [] if top_picks else self.matcher.select_fallback_picks(scored)
+        top_pick_names = [s.name for s in (top_picks or fallback_picks)]
 
         if not self.live:
-            description = self.matcher.build_event_description(scored, top_picks)
+            description = self.matcher.build_event_description(scored, top_picks, fallback_picks)
             self._log(
                 "Dry run — computing the schedule without touching live Calendar.",
                 "workflow.dry_run_schedule",
@@ -887,7 +929,7 @@ class ReActMealAgent:
                     "No free slot in the entire window; scheduling at default time with a conflict flag.",
                 )
 
-        description = self.matcher.build_event_description(scored, top_picks, conflict_flag=flagged)
+        description = self.matcher.build_event_description(scored, top_picks, fallback_picks, conflict_flag=flagged)
         event_id = self.act_create_event(meal_slot, event_date, scheduled_time, description, flagged)
         return ScheduledMeal(
             date=event_date, meal_slot=meal_slot, selected_items=selected, top_picks=top_pick_names,

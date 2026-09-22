@@ -305,6 +305,18 @@ class Repository:
     def get_scheduled_meal(self, meal_id) -> Optional[ScheduledMealRow]:
         return self.db.get(ScheduledMealRow, meal_id)
 
+    def list_scheduled_meals_in_range(self, dates: list[date]) -> list[ScheduledMealRow]:
+        """Already-scheduled rows (real calendar_event_id) across every user
+        for a set of dates — for jobs/refresh_descriptions.py, which walks
+        the opposite set from claim_scheduled_meal's idempotency guard: rows
+        that already exist, not ones still needing a first schedule."""
+        return list(self.db.scalars(
+            select(ScheduledMealRow).where(
+                ScheduledMealRow.event_date.in_(dates),
+                ScheduledMealRow.calendar_event_id.is_not(None),
+            )
+        ))
+
     def list_pending_manual_feedback(self, user_id, before_date: date, limit: int = 10) -> list[ScheduledMealRow]:
         """Past, unresolved meals for one user, for the manual "how was it"
         feedback page — a self-serve, immediate complement to the automated
