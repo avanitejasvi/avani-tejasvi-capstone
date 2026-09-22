@@ -53,17 +53,32 @@ GEMINI_EXTRACTION_MAX_OUTPUT_TOKENS = 32000
 MEAL_DURATION_MINUTES = 45
 SLOT_SEARCH_STEP_MINUTES = 15
 
-# Fallback vocabulary used only when a dish has no category to derive tags
-# from (or Gemini/live calls are unavailable) — keeps the whole loop runnable
-# offline, matching skills.md's own "test before wiring up live calls" order.
+# Ingredient/keyword vocabulary derived from dish names — used both as the
+# fallback when a dish has no category at all (or Gemini/live calls are
+# unavailable, keeping the whole loop runnable offline, matching skills.md's
+# own "test before wiring up live calls" order) AND, since it's unioned onto
+# a dish's category tags in derive_tags_from_category, as the deterministic
+# related-food signal: two dishes in different menu categories that share a
+# core ingredient (e.g. "Aloo Paratha" under Breakfast and "Dum Aloo
+# Banarasi" under Gravy Veg both containing "aloo") still connect through
+# tag_weights, so a confirmed dish's rating estimates a genuinely new
+# dish that shares an ingredient with it — not just a shared menu section.
+# Every keyword below is grounded in real dish names on the board (see
+# agent/data/menu_intake_2026-09-15.json), same discipline
+# preference_questions.py already follows for its seeded dishes.
 NAIVE_TAG_KEYWORDS = {
     "paneer": ["veg", "jain"], "dal": ["dal"], "rice": ["rice"], "chawal": ["rice"],
     "gravy": ["gravy"], "curry": ["gravy"], "masala": ["gravy"], "sabzi": ["dry", "veg"],
-    "chole": ["gravy", "veg"], "raita": ["curd-based"], "curd": ["curd-based"],
+    "chole": ["gravy", "veg", "chickpea"], "chana": ["chickpea"], "raita": ["curd-based"], "curd": ["curd-based"],
     "kheer": ["dessert", "sweet"], "halwa": ["sweet"], "ladoo": ["sweet"], "cake": ["sweet"],
     "pastry": ["dessert"], "malpua": ["sweet"], "chicken": ["non-vegetarian"],
     "mutton": ["non-vegetarian"], "fish": ["non-vegetarian"], "egg": ["non-vegetarian"],
     "risotto": ["fusion"], "fusion": ["fusion"], "manchurian": ["fusion", "spicy"],
+    # Ingredient-level tags — e.g. Aloo Bhaji/Aloo Tomato Rassa/Dum Aloo
+    # Banarasi/Potato 65 all share "potato" despite different categories.
+    "aloo": ["potato"], "potato": ["potato"], "rajma": ["kidney-bean"],
+    "lauki": ["bottle-gourd"], "parwal": ["pointed-gourd"], "turai": ["ridge-gourd"],
+    "mushroom": ["mushroom"], "soya": ["soy"],
 }
 
 
@@ -198,13 +213,20 @@ def find_fuzzy_match(name: str, known_dishes: list[KnownDish], threshold: float 
 
 def derive_tags_from_category(category: Optional[str], name: str) -> list[str]:
     """A dish's menu category (e.g. 'Gravy Veg - Jain') is a much more
-    reliable tag source than guessing from the name alone, since it comes
-    straight from the mess's own menu structure (mess_structure.json). Falls
-    back to name-keyword guessing only when no category was extracted."""
-    if not category:
-        return infer_tags_naive(name)
-    tags = [tag for tag in re.split(r"[\s/\-]+", category.lower()) if tag]
-    return tags or infer_tags_naive(name)
+    reliable general tag source than guessing from the name alone, since it
+    comes straight from the mess's own menu structure (mess_structure.json)
+    — but it only ever describes the menu SECTION, never the ingredient. So
+    category tags and name-derived ingredient tags (infer_tags_naive) are
+    always unioned, not one-or-the-other: "Aloo Paratha" (Breakfast) and
+    "Dum Aloo Banarasi" (Gravy Veg) need to share "potato" despite being in
+    completely different sections, for compute_tag_weights/match_dish's
+    tag_weight_estimate to connect them as related foods."""
+    category_tags = [tag for tag in re.split(r"[\s/\-]+", category.lower()) if tag] if category else []
+    tags = list(category_tags)
+    for tag in infer_tags_naive(name):
+        if tag not in tags:
+            tags.append(tag)
+    return tags
 
 
 def infer_tags_naive(name: str) -> list[str]:
