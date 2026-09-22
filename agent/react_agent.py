@@ -103,6 +103,14 @@ class KnownDish(BaseModel):
     last_response: Optional[str] = None
     last_note: Optional[str] = None
     last_seen: date
+    # "confirmed" (explicit feedback: a real RSVP, manual /feedback, a
+    # check-in answer, a baseline questionnaire answer, or a profile edit),
+    # "inferred" (a tag_weight estimate, never confirmed), or "unknown"
+    # (no_data — registered so it can be cooldown-tracked for check-in, but
+    # carries no real signal). See MenuPreferenceMatchingSkill.match_dish/
+    # apply_feedback for how this is set and never silently upgraded.
+    confidence: str = "inferred"
+    last_checkin_asked: Optional[date] = None
 
 
 class UserPreferences(BaseModel):
@@ -139,6 +147,7 @@ class ScoredDish(BaseModel):
     score: float
     source: str  # "known_dish" | "known_dish_fuzzy" | "tag_weight_estimate" | "no_data"
     decision: str  # "eat" | "skip"
+    confidence: str = "unknown"  # "confirmed" | "inferred" | "unknown" — see KnownDish.confidence
 
 
 class ScheduledMeal(BaseModel):
@@ -533,19 +542,22 @@ class MenuPreferenceMatchingSkill:
         for dish in prefs.known_dishes:
             if normalize_dish_name(dish.name) == normalized:
                 decision = "eat" if dish.rating >= EAT_THRESHOLD else "skip"
-                return ScoredDish(name=name, mess=mess, tags=tags, score=dish.rating, source="known_dish", decision=decision)
+                # Confidence is whatever this dish's own history has already
+                # earned — a match here must never silently upgrade an
+                # unconfirmed estimate to look "settled".
+                return ScoredDish(name=name, mess=mess, tags=tags, score=dish.rating, source="known_dish", decision=decision, confidence=dish.confidence)
 
         fuzzy = find_fuzzy_match(name, prefs.known_dishes)
         if fuzzy is not None:
             decision = "eat" if fuzzy.rating >= EAT_THRESHOLD else "skip"
-            return ScoredDish(name=fuzzy.name, mess=mess, tags=fuzzy.tags, score=fuzzy.rating, source="known_dish_fuzzy", decision=decision)
+            return ScoredDish(name=fuzzy.name, mess=mess, tags=fuzzy.tags, score=fuzzy.rating, source="known_dish_fuzzy", decision=decision, confidence=fuzzy.confidence)
 
         recognized = [prefs.tag_weights[tag] for tag in tags if tag in prefs.tag_weights]
         if not recognized:
-            return ScoredDish(name=name, mess=mess, tags=tags, score=0.0, source="no_data", decision="skip")
+            return ScoredDish(name=name, mess=mess, tags=tags, score=0.0, source="no_data", decision="skip", confidence="unknown")
         estimate = sum(recognized) / len(recognized)
         decision = "eat" if estimate >= EAT_THRESHOLD else "skip"
-        return ScoredDish(name=name, mess=mess, tags=tags, score=round(estimate, 2), source="tag_weight_estimate", decision=decision)
+        return ScoredDish(name=name, mess=mess, tags=tags, score=round(estimate, 2), source="tag_weight_estimate", decision=decision, confidence="inferred")
 
     def register_new_dishes(self, prefs: UserPreferences, scored: list[ScoredDish], event_date: date) -> UserPreferences:
         existing = {normalize_dish_name(dish.name) for dish in prefs.known_dishes}
@@ -553,7 +565,10 @@ class MenuPreferenceMatchingSkill:
             if normalize_dish_name(result.name) in existing or result.source not in ("tag_weight_estimate", "no_data"):
                 continue
             prefs.known_dishes.append(
-                KnownDish(name=result.name, tags=result.tags, rating=result.score, times_eaten=0, last_seen=event_date)
+                KnownDish(
+                    name=result.name, tags=result.tags, rating=result.score, times_eaten=0, last_seen=event_date,
+                    confidence=result.confidence,
+                )
             )
             existing.add(normalize_dish_name(result.name))
         return prefs
@@ -574,6 +589,9 @@ class MenuPreferenceMatchingSkill:
             dish.last_response = response
             dish.last_note = note
             dish.last_seen = event_date
+            # An explicit response — from any channel — always outranks
+            # inference, and one response is enough; never require repeats.
+            dish.confidence = "confirmed"
             break
         return prefs
 

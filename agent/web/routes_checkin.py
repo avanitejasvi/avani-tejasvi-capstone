@@ -35,9 +35,13 @@ templates = Jinja2Templates(directory="agent/web/templates")
 
 matcher = MenuPreferenceMatchingSkill()
 
-MAX_CANDIDATES = 6
+MAX_CANDIDATES = 4  # "a small number of high-value items", not the old full-shortlist form
 MAX_REPEATS = 4
 RECENT_DAYS = 14
+# How long a dish stays off the check-in candidate list after being asked
+# about, whether or not the student actually answered — otherwise the same
+# still-unresolved unknown/inferred dish gets re-shown every single week.
+CHECKIN_COOLDOWN_DAYS = 14
 
 
 def _this_weeks_items(repo: Repository) -> list[ExtractedDish]:
@@ -51,26 +55,38 @@ def _this_weeks_items(repo: Repository) -> list[ExtractedDish]:
     return []
 
 
-def _pick_candidates(items, prefs):
-    """Prioritizes genuinely uncertain items — the ones a check-in answer
-    can actually resolve — over ones already well understood, using the
-    existing match_dish/scoring logic directly, not a parallel heuristic."""
+def _pick_candidates(items, prefs, today):
+    """Targets genuinely unresolved items — confidence "unknown" or
+    "inferred" only, per the confidence model in react_agent.py. A
+    "confirmed" dish (real feedback already given, from any channel,
+    regardless of score) never needs more information, so it's never a
+    candidate here, no matter how it scores. Recently-asked dishes are
+    cooled down so the same unresolved item isn't re-shown every week."""
+    cooldown_cutoff = today - timedelta(days=CHECKIN_COOLDOWN_DAYS)
+    asked_recently = {
+        normalize_dish_name(dish.name)
+        for dish in prefs.known_dishes
+        if dish.last_checkin_asked is not None and dish.last_checkin_asked >= cooldown_cutoff
+    }
+
     seen = set()
-    uncertain, borderline = [], []
+    unknown, inferred = [], []
     for item in items:
         key = normalize_dish_name(item.name)
-        if key in seen:
+        if key in seen or key in asked_recently:
             continue
         seen.add(key)
         tags = derive_tags_from_category(item.category, item.name)
         scored = matcher.match_dish(item.name, item.mess, tags, prefs)
-        if scored.source in ("no_data", "tag_weight_estimate"):
-            uncertain.append((item, scored))
-        elif scored.source == "known_dish" and 2.0 <= scored.score <= 4.0:
-            borderline.append((item, scored))
-    random.shuffle(uncertain)
-    random.shuffle(borderline)
-    picks = (uncertain + borderline)[:MAX_CANDIDATES]
+        if scored.confidence == "unknown":
+            unknown.append((item, scored))
+        elif scored.confidence == "inferred":
+            inferred.append((item, scored))
+    random.shuffle(unknown)
+    random.shuffle(inferred)
+    # Truly unknown items add the most new information, so they're prioritized
+    # ahead of already-inferred-but-unconfirmed ones.
+    picks = (unknown + inferred)[:MAX_CANDIDATES]
     return [item for item, _ in picks], [scored for _, scored in picks]
 
 
@@ -86,14 +102,22 @@ def checkin_form(request: Request, user: User = Depends(get_current_user), db: S
     repo = Repository(db)
     prefs = repo.load_preferences(user.id)
     items = _this_weeks_items(repo)
-    candidates, scored = _pick_candidates(items, prefs)
+    today = today_ist()
+    candidates, scored = _pick_candidates(items, prefs, today)
 
     if candidates:
         # Register any genuinely-new candidate now, using the existing
         # register_new_dishes — so the POST handler's apply_feedback calls
         # (which only ever update an EXISTING known_dish) have something to
         # find, exactly the same as a real scheduling run would.
-        prefs = matcher.register_new_dishes(prefs, scored, today_ist())
+        prefs = matcher.register_new_dishes(prefs, scored, today)
+        # Stamp the cooldown on every dish actually shown, new or not, so
+        # _pick_candidates skips it next time regardless of whether the
+        # student answers.
+        asked = {normalize_dish_name(item.name) for item in candidates}
+        for dish in prefs.known_dishes:
+            if normalize_dish_name(dish.name) in asked:
+                dish.last_checkin_asked = today
         repo.save_preferences(user.id, prefs)
 
     return templates.TemplateResponse(request, "checkin.html", {

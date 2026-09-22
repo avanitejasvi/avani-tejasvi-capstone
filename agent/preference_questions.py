@@ -295,8 +295,13 @@ def _upsert_known_dish(prefs: UserPreferences, name: str, tags: list, rating: fl
         dish.rating = rating
         dish.tags = sorted(set(dish.tags) | set(tags))
         dish.last_seen = today
+        # A baseline answer names this exact dish directly, so it's explicit
+        # signal, not an inference — same confidence tier a real response gets.
+        dish.confidence = "confirmed"
         return
-    prefs.known_dishes.append(KnownDish(name=name, tags=tags, rating=rating, times_eaten=0, last_seen=today))
+    prefs.known_dishes.append(
+        KnownDish(name=name, tags=tags, rating=rating, times_eaten=0, last_seen=today, confidence="confirmed")
+    )
 
 
 def apply_answers(prefs: UserPreferences, form) -> UserPreferences:

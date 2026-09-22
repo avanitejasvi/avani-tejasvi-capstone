@@ -1,9 +1,11 @@
-"""Manual "how was it" feedback — a self-serve way to rate a past meal right
-now, without waiting for a Calendar RSVP to land or the next weekly
-collect_feedback.py pass to check it. Real Calendar RSVPs (see
-GoogleCalendarSkill.get_response) are the primary automated signal again as
-of the meal's own attendee entry being restored — this page is a
-complementary, immediate channel, not the only one.
+"""The preference summary/profile page: a queue of past meals still waiting
+for feedback (the original, self-serve "how was it" channel — a complement
+to the automated weekly collect_feedback.py Calendar-RSVP pass, not the
+only one), plus a concise, editable summary of what the system currently
+understands — likes/avoids/still-learning, grouped by each dish's
+confidence tier (react_agent.KnownDish.confidence). There's no separate
+"rate past meals" tab: both live here, since a confirmed rating and this
+page's summary are the same underlying data.
 """
 import uuid
 
@@ -15,7 +17,7 @@ from sqlalchemy.orm import Session
 from agent.db import get_db
 from agent.feedback_sentiment import classify_sentiment
 from agent.models_db import User
-from agent.react_agent import MenuPreferenceMatchingSkill
+from agent.react_agent import EAT_THRESHOLD, MenuPreferenceMatchingSkill
 from agent.repository import Repository
 from agent.timezone import today_ist
 from agent.web.deps import get_current_user
@@ -23,11 +25,55 @@ from agent.web.deps import get_current_user
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 templates = Jinja2Templates(directory="agent/web/templates")
 
+# What the profile-edit dropdown's choices mean in terms of the same
+# yes/no/maybe scale every other real feedback channel already uses.
+EDIT_RESPONSE = {"like": "yes", "neutral": "maybe", "avoid": "no"}
+
+
+def _preference_summary(prefs):
+    """Groups known_dishes by confidence tier for the editable summary.
+    Unknown dishes aren't listed individually — there can be many, and
+    they carry no real signal yet — just counted for transparency."""
+    likes, avoids, learning, unknown_count = [], [], [], 0
+    for dish in prefs.known_dishes:
+        if dish.confidence == "confirmed":
+            (likes if dish.rating >= EAT_THRESHOLD else avoids).append(dish)
+        elif dish.confidence == "inferred":
+            learning.append(dish)
+        else:
+            unknown_count += 1
+    likes.sort(key=lambda d: d.rating, reverse=True)
+    avoids.sort(key=lambda d: d.rating)
+    learning.sort(key=lambda d: d.name)
+    return {"likes": likes, "avoids": avoids, "learning": learning, "unknown_count": unknown_count}
+
 
 @router.get("", response_class=HTMLResponse)
 def feedback_list(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    rows = [r for r in Repository(db).list_pending_manual_feedback(user.id, today_ist()) if r.top_picks]
-    return templates.TemplateResponse(request, "feedback.html", {"rows": rows})
+    repo = Repository(db)
+    rows = [r for r in repo.list_pending_manual_feedback(user.id, today_ist()) if r.top_picks]
+    prefs = repo.load_preferences(user.id)
+    return templates.TemplateResponse(request, "feedback.html", {
+        "rows": rows, "prefs": prefs, "summary": _preference_summary(prefs),
+    })
+
+
+@router.post("/edit")
+async def edit_preference(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """A direct profile edit — the summary's like/neutral/avoid control.
+    Reuses apply_feedback exactly as check-in's manual choices already do,
+    rather than a second rating scale, so an explicit edit here sets
+    confidence="confirmed" the same way any other real response does."""
+    form = await request.form()
+    dish_name = (form.get("dish_name") or "").strip()
+    choice = form.get("choice")
+    if dish_name and choice in EDIT_RESPONSE:
+        matcher = MenuPreferenceMatchingSkill()
+        repo = Repository(db)
+        prefs = repo.load_preferences(user.id)
+        prefs = matcher.apply_feedback(prefs, dish_name, EDIT_RESPONSE[choice], None, "neutral", today_ist())
+        repo.save_preferences(user.id, prefs)
+    return RedirectResponse("/feedback", status_code=302)
 
 
 @router.post("/{meal_id}")

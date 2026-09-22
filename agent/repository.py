@@ -133,11 +133,23 @@ class Repository:
             row = Preferences(user_id=user_id)
             self.db.add(row)
             self.db.commit()
+        known_dishes = []
+        for d in row.known_dishes or []:
+            dish = KnownDish(**d)
+            # Pre-dates the confidence field entirely -> Pydantic's default
+            # ("inferred") applies, which would wrongly downgrade a dish real
+            # feedback already confirmed. times_eaten/last_response only get
+            # set by an actual response (apply_feedback), so their presence
+            # here is an unambiguous backfill signal — anything genuinely
+            # never-confirmed correctly stays at the "inferred" default.
+            if "confidence" not in d and (dish.times_eaten > 0 or dish.last_response is not None):
+                dish.confidence = "confirmed"
+            known_dishes.append(dish)
         return UserPreferences(
             user_id=str(user_id),
             dietary_restrictions=row.dietary_restrictions or [],
             skip_meal_slots=row.skip_meal_slots or [],
-            known_dishes=[KnownDish(**d) for d in (row.known_dishes or [])],
+            known_dishes=known_dishes,
             comment=row.comment,
             tag_weights_note=row.tag_weights_note,
         )
