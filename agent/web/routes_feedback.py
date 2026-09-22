@@ -25,8 +25,12 @@ from agent.web.deps import get_current_user
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 templates = Jinja2Templates(directory="agent/web/templates")
 
-# What the profile-edit dropdown's choices mean in terms of the same
-# yes/no/maybe scale every other real feedback channel already uses.
+# What the profile-edit dropdown's real choices mean in terms of the same
+# yes/no/maybe scale every other real feedback channel already uses. Neutral
+# is a genuine preference ("I'll eat it, just not a favorite") — deliberately
+# a different word from the template's "unrated" sentinel (the Still-learning
+# rows' default), which means "no opinion given" and is intentionally NOT a
+# key here, so it's never mistaken for a real edit and never applied.
 EDIT_RESPONSE = {"like": "yes", "neutral": "maybe", "avoid": "no"}
 
 

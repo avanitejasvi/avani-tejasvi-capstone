@@ -58,7 +58,7 @@
           <input type="hidden" name="current" value="like">
           <select name="choice">
             <option value="like" selected>Like</option>
-            <option value="neutral">Neutral</option>
+            <option value="neutral">Neutral (I'll eat it, not a favorite)</option>
             <option value="avoid">Avoid</option>
           </select>
         </span>
@@ -77,7 +77,7 @@
           <input type="hidden" name="current" value="avoid">
           <select name="choice">
             <option value="like">Like</option>
-            <option value="neutral">Neutral</option>
+            <option value="neutral">Neutral (I'll eat it, not a favorite)</option>
             <option value="avoid" selected>Avoid</option>
           </select>
         </span>
@@ -95,10 +95,11 @@
         <span>{{ dish.name }} <span class="muted">(estimated {{ dish.rating }})</span></span>
         <span>
           <input type="hidden" name="dish_name" value="{{ dish.name }}">
-          <input type="hidden" name="current" value="neutral">
+          <input type="hidden" name="current" value="unrated">
           <select name="choice">
+            <option value="unrated" selected>Not yet rated</option>
             <option value="like">Like</option>
-            <option value="neutral" selected>Neutral</option>
+            <option value="neutral">Neutral (I'll eat it, not a favorite)</option>
             <option value="avoid">Avoid</option>
           </select>
         </span>
