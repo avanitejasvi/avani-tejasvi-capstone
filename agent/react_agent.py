@@ -435,12 +435,30 @@ class GoogleCalendarSkill:
             return created["id"]
         except HttpError as exc:
             if exc.resp.status == 409:
-                existing = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
-                return existing["id"]
+                return self._recover_from_conflict(event_id, body, send_updates)
             raise
 
+    def _recover_from_conflict(self, event_id: str, body: dict, send_updates: str) -> str:
+        """A 409 on insert means this id already exists — either (a) a real
+        retry after a mid-request crash, where the event is already exactly
+        what we'd create, or (b) this id was used by an event the student
+        later deleted from their own Calendar: Google tombstones a deleted
+        event's id as status="cancelled" rather than freeing it, so the very
+        same (user, date, slot) being scheduled again 409s here too. Case
+        (b) needs an explicit revive (update(), not a plain get()) — a
+        cancelled event is invisible in the Calendar UI, so silently
+        returning its id, as this used to do, looked like a successful
+        create while actually leaving a hidden dead event behind."""
+        existing = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
+        if existing.get("status") == "cancelled":
+            revived = self.service.events().update(
+                calendarId=self.calendar_id, eventId=event_id, body=body, sendUpdates=send_updates
+            ).execute()
+            return revived["id"]
+        return existing["id"]
+
     def create_reminder_event(self, event_id: str, event_date: date, summary: str, description: str) -> str:
-        """Same deterministic-id + 409-as-success pattern as create_event_with_id,
+        """Same deterministic-id + 409-recovery pattern as create_event_with_id,
         for the weekly "no menu uploaded yet" reminder — a separate small method
         rather than overloading create_event_with_id's meal-specific summary/
         flagged-conflict logic for an unrelated kind of event."""
@@ -458,8 +476,7 @@ class GoogleCalendarSkill:
             return created["id"]
         except HttpError as exc:
             if exc.resp.status == 409:
-                existing = self.service.events().get(calendarId=self.calendar_id, eventId=event_id).execute()
-                return existing["id"]
+                return self._recover_from_conflict(event_id, body, send_updates="none")
             raise
 
     def get_event_status(self, event_id: str) -> Optional[str]:
