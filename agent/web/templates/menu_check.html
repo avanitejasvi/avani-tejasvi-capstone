@@ -10,8 +10,8 @@
 
   <div class="screen-body">
     <div style="margin-bottom:24px">{{ ui.back('/preferences?flow=onboarding&pending=' ~ pending.id if onboarding else '/menu/upload?flow=menu') }}</div>
-    <h1 class="h1" style="margin-bottom:6px">Check your menu</h1>
-    <p class="small muted" style="margin-bottom:20px">{{ week_label }} · Make sure Forkcast read your photo correctly.</p>
+    <h1 class="h1" style="margin-bottom:6px">{{ "We couldn't read that" if pending.status == "error" else "Reading your menu" }}</h1>
+    <p class="small muted" style="margin-bottom:20px">{{ week_label }}</p>
 
     {% if pending.status == "processing" %}
     <div class="card card-pad row" data-reading>
@@ -29,12 +29,21 @@
       <a class="btn btn-ghost btn-block" href="{{ '/' if onboarding else '/menu' }}">Skip for now</a>
     </div>
     {% else %}
-    <div>{% include "_menu_days.html" %}</div>
+    {# Read successfully: confirmed automatically (forkcast.js submits the
+       form below) — the Menu tab shows the full menu for anyone who wants to
+       check it. The button is only a fallback if JS is off. #}
+    <div class="card card-pad row">
+      <svg class="spinner" style="width:32px; height:32px; flex-shrink:0" viewBox="0 0 96 96" fill="none" aria-hidden="true"><circle cx="48" cy="48" r="42" stroke="#EDE0CC" stroke-width="9"/><path d="M48 6a42 42 0 0 1 42 42" stroke="#C96A00" stroke-width="9" stroke-linecap="round"/></svg>
+      <div>
+        <p class="small" style="font-weight:600">Got it — {{ days|sum(attribute="count") }} dishes across {{ days|length }} days.</p>
+        <p class="xs muted">Adding your meals now. You can review the menu anytime in the Menu tab.</p>
+      </div>
+    </div>
     {% endif %}
   </div>
 
   {% if pending.status == "ready" %}
-  <form class="screen-foot" method="post" action="/menu/upload/confirm" data-confirm-form>
+  <form class="screen-foot" method="post" action="/menu/upload/confirm" data-confirm-form data-auto-confirm>
     <input type="hidden" name="pending_id" value="{{ pending.id }}">
     <input type="hidden" name="flow" value="{{ flow }}">
     <button type="submit" class="btn btn-primary btn-block">Confirm menu</button>

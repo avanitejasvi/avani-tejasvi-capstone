@@ -290,11 +290,15 @@
   }
   const confirmForm = $("[data-confirm-form]");
   if (confirmForm) {
-    confirmForm.addEventListener("submit", () => {
+    const lock = () => {
       const btn = $("button[type=submit]", confirmForm);
       btn.disabled = true;
       btn.textContent = "Confirming…";
-    });
+    };
+    confirmForm.addEventListener("submit", lock);
+    // Nobody reads 150+ dishes before tapping Confirm — confirm as soon as
+    // the photo is read; the Menu tab is where to review it.
+    if (confirmForm.hasAttribute("data-auto-confirm")) { lock(); setTimeout(() => confirmForm.submit(), 900); }
   }
 
   // ── Almost there: real scheduling progress ──────────────────────────────
