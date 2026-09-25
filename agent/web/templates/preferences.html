@@ -20,8 +20,8 @@
   <p>This is who you are as an eater — stable stuff that doesn't change week to week, {{ user.display_name or user.email }}.
      For "what do I feel like eating <em>this</em> week," use <a href="/checkin">Weekly check-in</a> instead —
      that one looks at the actual current board, not these examples.</p>
-  <p class="muted">The example dishes below are grounded in a real two-week board, just not necessarily this week's —
-     answers go straight into the same preference data the weekly matching already reads, they don't create anything new.</p>
+  <p class="muted">These are general questions — no menu needed. They give the agent a starting point for
+     dishes it hasn't seen yet; your real RSVPs and feedback will take over from there. Skip anything you're unsure about.</p>
 
   <form method="post" action="/preferences">
     {% for q in questions %}
@@ -33,7 +33,8 @@
       {% else %}
         {% for opt in q.options %}
         <label class="slot">
-          <input type="{{ 'checkbox' if q.kind == 'multi' else 'radio' }}" name="{{ q.id }}" value="{{ opt.value }}">
+          <input type="{{ 'checkbox' if q.kind == 'multi' else 'radio' }}" name="{{ q.id }}" value="{{ opt.value }}"
+                 {% if q.id == 'hard_excludes' and opt.value in selected_excludes %}checked{% endif %}>
           {{ opt.label }}
         </label>
         {% endfor %}
@@ -44,7 +45,7 @@
     <div class="question">
       <label for="dietary_restrictions">Anything else to hard-exclude? (comma-separated, e.g. an allergy not covered above)</label>
       <input type="text" id="dietary_restrictions" name="dietary_restrictions"
-             value="{{ prefs.dietary_restrictions | join(', ') }}">
+             value="{{ free_text_restrictions | join(', ') }}">
     </div>
 
     <div class="question">

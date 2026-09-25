@@ -1,38 +1,42 @@
-"""Menu-grounded, diagnostic preference intake.
+"""General, menu-independent baseline preference intake (onboarding).
 
-This is deliberately NOT a second learning system. It's a richer front end
-for the same `UserPreferences` object `MenuPreferenceMatchingSkill` and
+This is deliberately NOT a second learning system. It's a front end for the
+same `UserPreferences` object `MenuPreferenceMatchingSkill` and
 `compute_tag_weights`/`match_dish`/`apply_feedback` in react_agent.py have
 always read — those functions are untouched. Every answer here becomes one
 of exactly three things the existing schema already understands:
 
-  - a `dietary_restrictions` entry (checked by
-    MenuPreferenceMatchingSkill.violates_dietary_restriction, unchanged), or
-  - a seeded `KnownDish` (rating + tags, upserted by normalized name — the
-    same shape a real YES/NO response already produces), or
+  - `dietary_restrictions` keywords (checked by
+    MenuPreferenceMatchingSkill.violates_dietary_restriction, unchanged,
+    which substring-matches a dish's name and tags — so a restriction has
+    to be a word that actually shows up in dish names, like "onion" or
+    "paneer", not an abstract label like "dairy" that no dish is called), or
+  - a seeded *profile* `KnownDish` — e.g. "Gravy dishes (in general)" —
+    carrying only broad tags, or
   - a line folded into `comment` (free text the schema has always
-    round-tripped without scoring on it — used here for the handful of
-    dimensions, like "how often" or "only when...", that genuinely have no
-    structural home without inventing new scoring logic, which is out of
-    scope for this change).
+    round-tripped without scoring on it).
 
-Every dish name and category below was read directly off the real two-week
-board on disk (agent/data/menu_intake_2026-09-15.json through -20.json —
-all six dates hold the same one extraction), not invented. Categories are
-spelled exactly as `derive_tags_from_category` already splits them (e.g.
-"Gravy Veg - Jain" -> tags ["gravy", "veg", "jain"]), so a seeded dish's
-tags land in the same tag_weights buckets a real extracted item's tags
-would.
+Why profile entries instead of real dish names: onboarding has to work
+before any menu has been uploaded, so no question can name "this week's"
+dishes. A profile entry never matches a real dish by name (its name is
+deliberately unlike any menu item, so neither the exact nor the fuzzy
+match in match_dish picks it up); it only feeds compute_tag_weights. Any
+future dish carrying the same tag — from its menu category via
+derive_tags_from_category, or from NAIVE_TAG_KEYWORDS — then gets a
+`tag_weight_estimate` from it, the same path any unseen dish already takes.
+Every tag used below is one real dishes actually receive (category tags
+from mess_structure.json, or a NAIVE_TAG_KEYWORDS entry).
+
+Profile entries also show up in the /feedback Likes/Avoids summary like any
+confirmed dish, so a student can see and correct their baseline there.
 
 Rating tiers reuse the scale react_agent.py already scores on elsewhere
-(RATING_MIN/MAX = 0/5, EAT_THRESHOLD = 3.0, RESPONSE_BASELINE
-yes/no/maybe = 4.0/1.5/2.5) — an intake answer should read the same way to
-compute_tag_weights as a real response would, not a separate scale.
+(RATING_MIN/MAX = 0/5, EAT_THRESHOLD = 3.0).
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from agent.react_agent import KnownDish, UserPreferences, derive_tags_from_category, normalize_dish_name
+from agent.react_agent import KnownDish, UserPreferences, normalize_dish_name
 from agent.timezone import today_ist
 
 FAVORITE = 5.0
@@ -40,7 +44,6 @@ LIKE = 4.0
 NEUTRAL = 3.0
 DISLIKE = 2.0
 STRONG_DISLIKE = 1.0
-DECLINE = 1.5  # matches RESPONSE_BASELINE["no"]
 
 COMMENT_MARKER = "--- intake answers ---"
 
@@ -48,9 +51,8 @@ COMMENT_MARKER = "--- intake answers ---"
 @dataclass
 class Seed:
     name: str
-    category: Optional[str]
+    tags: tuple
     rating: float
-    extra_tags: tuple = ()
 
 
 @dataclass
@@ -58,7 +60,7 @@ class Option:
     value: str
     label: str
     seeds: tuple = ()
-    restriction: Optional[str] = None
+    restrictions: tuple = ()
     comment_note: Optional[str] = None
 
 
@@ -72,210 +74,218 @@ class Question:
     label: Optional[str] = None  # short prefix used for "text" kind comment lines
 
 
+def _scale(name: str, tags: tuple, *levels):
+    """One profile entry rated at a different level per option — the common
+    shape for "how do you feel about X" questions."""
+    return {value: (Seed(name, tags, rating),) for value, rating in levels}
+
+
+GRAVY = ("Gravy dishes (in general)", ("gravy",))
+DRY = ("Dry sabzi (in general)", ("dry",))
+RICE = ("Rice (in general)", ("rice",))
+ROTI = ("Roti / phulka (in general)", ("roti", "phulka"))
+DAL = ("Dal (in general)", ("dal",))
+PANEER = ("Paneer dishes (in general)", ("paneer",))
+SPICY = ("Spicy food (in general)", ("spicy",))
+FRIED = ("Fried food (in general)", ("fried",))
+INDO_CHINESE = ("Indo-Chinese dishes (in general)", ("indo-chinese",))
+LIGHT_BREAKFAST = ("Light breakfasts (in general)", ("light",))
+SOUTH_INDIAN = ("South-Indian dishes (in general)", ("south-indian",))
+SWEETS = ("Desserts & sweets (in general)", ("dessert", "sweet"))
+CURD = ("Curd / raita / buttermilk (in general)", ("curd", "curd-based"))
+SALAD = ("Salads (in general)", ("salad",))
+
+paneer = _scale(*PANEER, ("favorite", FAVORITE), ("like", LIKE), ("neutral", NEUTRAL), ("dislike", STRONG_DISLIKE))
+spicy = _scale(*SPICY, ("love", LIKE), ("medium", NEUTRAL), ("mild", STRONG_DISLIKE))
+fried = _scale(*FRIED, ("love", LIKE), ("sometimes", NEUTRAL), ("avoid", DISLIKE))
+dal = _scale(*DAL, ("love", LIKE), ("fine", NEUTRAL), ("skip", DISLIKE))
+indo_chinese = _scale(*INDO_CHINESE, ("love", LIKE), ("sometimes", NEUTRAL), ("skip", DISLIKE))
+sweets = _scale(*SWEETS, ("every_time", LIKE), ("sometimes", NEUTRAL), ("rarely", DISLIKE))
+curd = _scale(*CURD, ("yes", LIKE), ("no", DISLIKE))
+salad = _scale(*SALAD, ("yes", LIKE), ("sometimes", NEUTRAL), ("no", DISLIKE))
+
 QUESTIONS = [
     Question(
         id="hard_excludes",
         kind="multi",
         prompt="Anything you can't or won't eat at all?",
-        help=(
-            "This board runs separate Jain versions of several dishes (Gravy Veg - Jain / Dry Veg - Jain "
-            "— e.g. Paneer Kadai, Chole Masala, Rajma Masala, Cabbage Masala all have one), so it's a real "
-            "fork every day, not a hypothetical."
-        ),
         options=(
-            Option("jain", "Jain-style — no onion, garlic, or root vegetables", restriction="jain"),
-            Option("dairy", "Dairy — curd, buttermilk, paneer, milk-based sweets", restriction="dairy"),
-            Option("gluten", "Gluten/wheat — roti, phulka, bread, poori", restriction="gluten"),
+            Option("jain", "Jain — no onion, garlic, or root vegetables",
+                   restrictions=("onion", "garlic", "potato", "aloo", "carrot", "beetroot")),
+            Option("dairy", "Dairy — milk, curd, paneer, ghee",
+                   restrictions=("paneer", "curd", "dahi", "raita", "milk", "taak", "kheer", "cheese", "ghee")),
+            Option("gluten", "Gluten / wheat — roti, bread, poori",
+                   restrictions=("roti", "phulka", "poori", "paratha", "bread", "pav", "naan")),
+            Option("egg", "Eggs", restrictions=("egg",)),
+            Option("paneer", "Paneer", restrictions=("paneer",)),
+        ),
+    ),
+    Question(
+        id="spice",
+        kind="single",
+        prompt="How spicy do you like your food?",
+        options=(
+            Option("love", "The spicier the better", seeds=spicy["love"]),
+            Option("medium", "Medium is fine", seeds=spicy["medium"]),
+            Option("mild", "Keep it mild", seeds=spicy["mild"]),
         ),
     ),
     Question(
         id="gravy_vs_dry",
         kind="single",
-        prompt="Gravy or dry preparation — which do you usually go for?",
-        help=(
-            'This week pairs a gravy and a dry version of the same vegetable on several days — e.g. '
-            '"Chole Masala" (gravy) vs "Cabbage Masala" (dry), or "Rajma Masala" (gravy) vs "Parwal Masala" (dry).'
-        ),
+        prompt="Gravy or dry sabzi?",
         options=(
-            Option(
-                "mostly_gravy", "Mostly gravy",
-                seeds=(
-                    Seed("Chole Masala", "Gravy Veg", LIKE),
-                    Seed("Rajma Masala", "Gravy Veg", LIKE),
-                    Seed("Cabbage Masala", "Dry Veg", DISLIKE),
-                ),
-            ),
-            Option(
-                "mostly_dry", "Mostly dry",
-                seeds=(
-                    Seed("Cabbage Masala", "Dry Veg", LIKE),
-                    Seed("Parwal Masala", "Dry Veg", LIKE),
-                    Seed("Chole Masala", "Gravy Veg", DISLIKE),
-                ),
-            ),
-            Option("depends", "Depends on the vegetable — no fixed rule"),
-        ),
-    ),
-    Question(
-        id="rice_favorite",
-        kind="single",
-        prompt="Which rice option on this board would you pick first?",
-        help="Actual options this week: Jeera Rice, Plain Rice, Brown Onion Rice, Vegetable Garlic Fried Rice.",
-        options=(
-            Option("jeera", "Jeera Rice", seeds=(Seed("Jeera Rice", "Rice", LIKE),)),
-            Option("plain", "Plain Rice", seeds=(Seed("Plain Rice", "Rice", LIKE),)),
-            Option("brown_onion", "Brown Onion Rice", seeds=(Seed("Brown Onion Rice", "Rice", LIKE),)),
-            Option("fried", "Vegetable Garlic Fried Rice", seeds=(Seed("Vegetable Garlic Fried Rice", "Rice", LIKE, ("fried",)),)),
-        ),
-    ),
-    Question(
-        id="rice_skip",
-        kind="single",
-        prompt="...and which of those would you actively skip?",
-        options=(
-            Option("jeera", "Jeera Rice", seeds=(Seed("Jeera Rice", "Rice", DECLINE),)),
-            Option("plain", "Plain Rice", seeds=(Seed("Plain Rice", "Rice", DECLINE),)),
-            Option("brown_onion", "Brown Onion Rice", seeds=(Seed("Brown Onion Rice", "Rice", DECLINE),)),
-            Option("fried", "Vegetable Garlic Fried Rice", seeds=(Seed("Vegetable Garlic Fried Rice", "Rice", DECLINE, ("fried",)),)),
-            Option("none", "None, I'll eat any of them"),
-        ),
-    ),
-    Question(
-        id="dal_enjoy",
-        kind="multi",
-        prompt="Dal shows up almost every day, in different forms. Which do you actually enjoy?",
-        help='Soupy tadka-style ("Dal Tadka"/"Dal Fry"), thicker dhaba-style ("Dal Dhaba"), fried into a snack ("Moong Dal Kachori"), or a thin soup ("Dal Rasam").',
-        options=(
-            Option("soupy", "Soupy tadka-style (Dal Tadka / Dal Fry)", seeds=(Seed("Dal Tadka", "Dal", LIKE), Seed("Dal Fry", "Dal", LIKE))),
-            Option("thick", "Thicker dhaba-style (Dal Dhaba)", seeds=(Seed("Dal Dhaba", "Dal", LIKE),)),
-            Option("fried_snack", "Fried dal snack (Moong Dal Kachori)", seeds=(Seed("Moong Dal Kachori", "Side Dish", LIKE, ("dal", "fried")),)),
-            Option("soup", "Thin dal soup (Dal Rasam)", seeds=(Seed("Dal Rasam", "Soup", LIKE, ("dal",)),)),
-        ),
-    ),
-    Question(
-        id="dal_skip",
-        kind="multi",
-        prompt="...and which dal styles do you tend to skip?",
-        options=(
-            Option("soupy", "Soupy tadka-style (Dal Tadka / Dal Fry)", seeds=(Seed("Dal Tadka", "Dal", DECLINE), Seed("Dal Fry", "Dal", DECLINE))),
-            Option("thick", "Thicker dhaba-style (Dal Dhaba)", seeds=(Seed("Dal Dhaba", "Dal", DECLINE),)),
-            Option("fried_snack", "Fried dal snack (Moong Dal Kachori)", seeds=(Seed("Moong Dal Kachori", "Side Dish", DECLINE, ("dal", "fried")),)),
-            Option("soup", "Thin dal soup (Dal Rasam)", seeds=(Seed("Dal Rasam", "Soup", DECLINE, ("dal",)),)),
-        ),
-    ),
-    Question(
-        id="paneer_strength",
-        kind="single",
-        prompt="How do you feel about paneer?",
-        help='Shows up both as a creamy gravy ("Paneer Kadai", "Paneer Mutter") and mixed into a rice bowl ("Awadhi Paneer and Vegetable Pulao").',
-        options=(
-            Option("favorite", "One of my favorites", seeds=(Seed("Paneer Kadai", "Gravy Veg", FAVORITE), Seed("Paneer Mutter", "Gravy Veg", FAVORITE), Seed("Awadhi Paneer and Vegetable Pulao", "Bowl", FAVORITE))),
-            Option("like", "I like it", seeds=(Seed("Paneer Kadai", "Gravy Veg", LIKE), Seed("Paneer Mutter", "Gravy Veg", LIKE), Seed("Awadhi Paneer and Vegetable Pulao", "Bowl", LIKE))),
-            Option("neutral", "Take it or leave it", seeds=(Seed("Paneer Kadai", "Gravy Veg", NEUTRAL), Seed("Paneer Mutter", "Gravy Veg", NEUTRAL))),
-            Option("dislike", "Not really for me", seeds=(Seed("Paneer Kadai", "Gravy Veg", DISLIKE), Seed("Paneer Mutter", "Gravy Veg", DISLIKE))),
-            Option("strong_dislike", "Really don't like it", seeds=(Seed("Paneer Kadai", "Gravy Veg", STRONG_DISLIKE), Seed("Paneer Mutter", "Gravy Veg", STRONG_DISLIKE))),
-            Option("wont_eat", "Won't eat it at all", restriction="paneer"),
-        ),
-    ),
-    Question(
-        id="fried_snacks",
-        kind="single",
-        prompt="How do you feel about fried starters/snacks?",
-        help='Real options this week: "Mix Veg Pakoda", "Batata Wada", "Chinese Samosa".',
-        options=(
-            Option("love", "Love them", seeds=(Seed("Mix Veg Pakoda", "Side Dish", LIKE, ("fried",)), Seed("Batata Wada", None, LIKE, ("fried", "snack")), Seed("Chinese Samosa", "Side Dish", LIKE, ("fried",)))),
-            Option("occasional", "Fine occasionally", seeds=(Seed("Mix Veg Pakoda", "Side Dish", NEUTRAL, ("fried",)), Seed("Batata Wada", None, NEUTRAL, ("fried", "snack")))),
-            Option("avoid", "Try to avoid fried food", seeds=(Seed("Mix Veg Pakoda", "Side Dish", DISLIKE, ("fried",)), Seed("Batata Wada", None, DISLIKE, ("fried", "snack")), Seed("Chinese Samosa", "Side Dish", DISLIKE, ("fried",)))),
-        ),
-    ),
-    Question(
-        id="breakfast_character",
-        kind="single",
-        prompt="On a typical morning, what do you actually want?",
-        help='Real recurring breakfast items: Cornflakes/Mix Cut Fruit (light & cold), Idly/Veg Upma (soft & steamed), Poori Bhaji/Medu Wada (fried & filling).',
-        options=(
-            Option("light_cold", "Light & cold (cereal, fruit)", seeds=(Seed("Cornflakes", None, LIKE, ("breakfast", "light")), Seed("Mix Cut Fruit", None, LIKE, ("breakfast", "fruit", "light")))),
-            Option("soft_steamed", "Soft & steamed (idly, upma, poha)", seeds=(Seed("Idly", None, LIKE, ("breakfast", "soft", "south-indian")), Seed("Veg Upma", None, LIKE, ("breakfast", "soft")))),
-            Option("fried_filling", "Fried & filling (poori, wada)", seeds=(Seed("Poori Bhaji", None, LIKE, ("breakfast", "fried")), Seed("Medu Wada", None, LIKE, ("breakfast", "fried")))),
-            Option("no_preference", "No strong preference, whatever's fastest"),
+            Option("gravy", "Mostly gravy", seeds=(Seed(*GRAVY, LIKE), Seed(*DRY, DISLIKE))),
+            Option("dry", "Mostly dry", seeds=(Seed(*DRY, LIKE), Seed(*GRAVY, DISLIKE))),
+            Option("both", "Either, no strong lean", seeds=(Seed(*GRAVY, LIKE), Seed(*DRY, LIKE))),
         ),
     ),
     Question(
         id="rice_vs_roti",
         kind="single",
-        prompt="For your main starch, rice or roti?",
-        help='Real options: "Plain Rice" vs "Phulka".',
+        prompt="Rice or roti?",
         options=(
-            Option("rice", "Usually rice", seeds=(Seed("Plain Rice", "Rice", LIKE), Seed("Phulka", "Phulka", DISLIKE))),
-            Option("roti", "Usually roti/phulka", seeds=(Seed("Phulka", "Phulka", LIKE), Seed("Plain Rice", "Rice", DISLIKE))),
-            Option("both", "Both, no strong lean", seeds=(Seed("Plain Rice", "Rice", LIKE), Seed("Phulka", "Phulka", LIKE))),
+            Option("rice", "Usually rice", seeds=(Seed(*RICE, LIKE), Seed(*ROTI, DISLIKE))),
+            Option("roti", "Usually roti / phulka", seeds=(Seed(*ROTI, LIKE), Seed(*RICE, DISLIKE))),
+            Option("both", "Both", seeds=(Seed(*RICE, LIKE), Seed(*ROTI, LIKE))),
         ),
     ),
     Question(
-        id="routine_timing",
-        kind="text",
-        prompt="Any routine timing quirks worth knowing?",
-        help='E.g. "always skip breakfast before 9am", "lunch is usually late, after 2pm", "rarely free before dinner". Recorded as a note only — the weekly job already checks your real Calendar for conflicts, so this doesn\'t change scheduling logic, just gives a human reader context.',
-        label="Routine timing",
-    ),
-    Question(
-        id="dessert_frequency",
+        id="dal",
         kind="single",
-        prompt="There's a dessert most days here — do you want one every time, or only sometimes?",
+        prompt="Dal?",
         options=(
-            Option("every_time", "Every time it's offered", comment_note="Dessert frequency: wants dessert every time it's offered."),
-            Option("sometimes", "Only sometimes", comment_note="Dessert frequency: only sometimes — don't over-recommend dessert."),
-            Option("rarely", "Rarely / not really into dessert", comment_note="Dessert frequency: rarely wants dessert."),
+            Option("love", "Love it", seeds=dal["love"]),
+            Option("fine", "It's fine", seeds=dal["fine"]),
+            Option("skip", "Usually skip it", seeds=dal["skip"]),
         ),
     ),
     Question(
-        id="dessert_style",
+        id="paneer",
         kind="single",
-        prompt="When you do want dessert, traditional or fusion?",
-        help='Traditional: "Gulab Jamun", "Rice Kheer". Fusion: "Jalebi Cheesecake", "Coconut and White Chocolate Mousse".',
+        prompt="Paneer?",
         options=(
-            Option("traditional", "Traditional Indian sweets", seeds=(Seed("Gulab Jamun", "Sweet", LIKE), Seed("Rice Kheer", "Sweet", LIKE))),
-            Option("fusion", "Fusion desserts", seeds=(Seed("Jalebi Cheesecake", "Dessert", LIKE), Seed("Coconut and White Chocolate Mousse", "Dessert", LIKE))),
-            Option("no_preference", "No real preference"),
+            Option("favorite", "One of my favourites", seeds=paneer["favorite"]),
+            Option("like", "I like it", seeds=paneer["like"]),
+            Option("neutral", "Take it or leave it", seeds=paneer["neutral"]),
+            Option("dislike", "Not for me", seeds=paneer["dislike"]),
         ),
     ),
     Question(
-        id="salad_tangy",
+        id="fried",
         kind="single",
-        prompt='Tangy/spicy raw salads — e.g. "Spicy Tangy Cabbage Salad" — your take?',
+        prompt="Fried food — pakoda, wada, samosa, poori?",
         options=(
-            Option("yes", "I go for these", seeds=(Seed("Spicy Tangy Cabbage Salad", "Salad", LIKE, ("tangy", "spicy")),)),
-            Option("sometimes", "Sometimes", seeds=(Seed("Spicy Tangy Cabbage Salad", "Salad", NEUTRAL, ("tangy", "spicy")),)),
-            Option("no", "Mostly skip the salad station", seeds=(Seed("Spicy Tangy Cabbage Salad", "Salad", DISLIKE, ("tangy", "spicy")),)),
+            Option("love", "Love it", seeds=fried["love"]),
+            Option("sometimes", "Now and then", seeds=fried["sometimes"]),
+            Option("avoid", "Try to avoid it", seeds=fried["avoid"]),
+        ),
+    ),
+    Question(
+        id="indo_chinese",
+        kind="single",
+        prompt="Indo-Chinese — noodles, manchurian, schezwan?",
+        options=(
+            Option("love", "Love it", seeds=indo_chinese["love"]),
+            Option("sometimes", "Now and then", seeds=indo_chinese["sometimes"]),
+            Option("skip", "Usually skip it", seeds=indo_chinese["skip"]),
+        ),
+    ),
+    Question(
+        id="breakfast",
+        kind="single",
+        prompt="What do you usually want for breakfast?",
+        options=(
+            Option("light", "Something light — cereal, fruit, bread", seeds=(Seed(*LIGHT_BREAKFAST, LIKE),)),
+            Option("south_indian", "South-Indian — idly, upma, uttapam", seeds=(Seed(*SOUTH_INDIAN, LIKE),)),
+            Option("hearty", "Something filling — poori, wada, poha"),
+            Option("any", "Whatever's there"),
+        ),
+    ),
+    Question(
+        id="sweets",
+        kind="single",
+        prompt="Desserts?",
+        options=(
+            Option("every_time", "Every time", seeds=sweets["every_time"]),
+            Option("sometimes", "Sometimes", seeds=sweets["sometimes"]),
+            Option("rarely", "Rarely", seeds=sweets["rarely"]),
         ),
     ),
     Question(
         id="curd",
         kind="single",
-        prompt="Curd or buttermilk with your meal?",
+        prompt="Curd, raita, or buttermilk with meals?",
         options=(
-            Option("yes", "Usually yes", seeds=(Seed("Curd", "Curd", LIKE), Seed("Taak", "Curd", LIKE, ("buttermilk",)))),
-            Option("no", "Not really", seeds=(Seed("Curd", "Curd", DISLIKE),)),
+            Option("yes", "Usually yes", seeds=curd["yes"]),
+            Option("no", "Not really", seeds=curd["no"]),
         ),
     ),
     Question(
-        id="variety_vs_familiarity",
+        id="salad",
         kind="single",
-        prompt="When something new shows up on the board, are you likely to try it?",
-        help="Recorded as a note only — it doesn't change any dish's score, since that would mean changing how new/unknown dishes get handled, not just what's asked here.",
+        prompt="Salads?",
         options=(
-            Option("usually_try", "Usually try it", comment_note="Approach to new dishes: usually tries them."),
-            Option("only_if_safe", "Only if it sounds safe", comment_note="Approach to new dishes: only tries ones that sound safe."),
+            Option("yes", "Usually take some", seeds=salad["yes"]),
+            Option("sometimes", "Sometimes", seeds=salad["sometimes"]),
+            Option("no", "Mostly skip", seeds=salad["no"]),
+        ),
+    ),
+    Question(
+        id="new_dishes",
+        kind="single",
+        prompt="Something new on the menu — do you try it?",
+        options=(
+            Option("usually_try", "Usually", comment_note="Approach to new dishes: usually tries them."),
+            Option("only_if_safe", "Only if it sounds familiar", comment_note="Approach to new dishes: only tries ones that sound safe."),
             Option("stick_to_known", "I stick to what I know", comment_note="Approach to new dishes: sticks to known dishes."),
         ),
     ),
     Question(
         id="anything_else",
         kind="text",
-        prompt="Anything else worth knowing? (e.g. \"I like X only when it's not too oily\", or a dish you love that isn't on this board)",
+        prompt="Anything else? (e.g. a dish you love, or \"nothing too oily\")",
         label="Note",
     ),
 ]
+
+
+HARD_EXCLUDES = next(q for q in QUESTIONS if q.id == "hard_excludes")
+
+# The first version of this form stored these abstract labels as
+# restrictions. violates_dietary_restriction substring-matches them against
+# dish names/tags, so "dairy"/"gluten" excluded almost nothing and "jain"
+# excluded the Jain-version dishes (tagged "jain") — the opposite of intended.
+# They're read back as the matching checkbox and never re-saved.
+LEGACY_RESTRICTIONS = {"jain": "jain", "dairy": "dairy", "gluten": "gluten"}
+
+
+def selected_excludes(prefs: UserPreferences) -> set:
+    """Which hard_excludes checkboxes to pre-tick: every keyword of the
+    option is already stored, or the student has its legacy label."""
+    stored = {r.lower() for r in prefs.dietary_restrictions}
+    ticked = [
+        o for o in HARD_EXCLUDES.options
+        if set(o.restrictions) <= stored or LEGACY_RESTRICTIONS.get(o.value) in stored
+    ]
+    # "Paneer" is contained in "Dairy" — don't show it ticked just because
+    # dairy is.
+    return {
+        o.value for o in ticked
+        if not any(set(o.restrictions) < set(other.restrictions) for other in ticked)
+    }
+
+
+def free_text_restrictions(prefs: UserPreferences) -> list:
+    """Restrictions not already covered by a ticked checkbox — what the
+    free-text field shows. Keywords a ticked option owns stay out of it,
+    so unticking that option on a later visit actually removes them."""
+    selected = selected_excludes(prefs)
+    covered = {r for o in HARD_EXCLUDES.options if o.value in selected for r in o.restrictions}
+    return [
+        r for r in prefs.dietary_restrictions
+        if r.lower() not in covered and r.lower() not in LEGACY_RESTRICTIONS
+    ]
 
 
 def _upsert_known_dish(prefs: UserPreferences, name: str, tags: list, rating: float, today) -> None:
@@ -295,8 +305,9 @@ def _upsert_known_dish(prefs: UserPreferences, name: str, tags: list, rating: fl
         dish.rating = rating
         dish.tags = sorted(set(dish.tags) | set(tags))
         dish.last_seen = today
-        # A baseline answer names this exact dish directly, so it's explicit
-        # signal, not an inference — same confidence tier a real response gets.
+        # A baseline answer is the student stating this directly, so it's
+        # explicit signal, not an inference — same confidence tier a real
+        # response gets.
         dish.confidence = "confirmed"
         return
     prefs.known_dishes.append(
@@ -319,14 +330,27 @@ def apply_answers(prefs: UserPreferences, form) -> UserPreferences:
             continue
 
         selected = form.getlist(q.id) if q.kind == "multi" else [v for v in [form.get(q.id)] if v]
-        for option in q.options:
-            if option.value not in selected:
-                continue
+        if not selected:
+            continue
+
+        # Re-answering a question replaces its earlier answer: drop this
+        # question's profile entries that the new answer doesn't seed (e.g.
+        # switching breakfast from "light" to "south_indian"), unless real
+        # feedback has since touched them.
+        chosen = [o for o in q.options if o.value in selected]
+        keep = {normalize_dish_name(s.name) for o in chosen for s in o.seeds}
+        owned = {normalize_dish_name(s.name) for o in q.options for s in o.seeds} - keep
+        prefs.known_dishes = [
+            d for d in prefs.known_dishes
+            if normalize_dish_name(d.name) not in owned or d.times_eaten > 0
+        ]
+
+        for option in chosen:
             for seed in option.seeds:
-                tags = list(derive_tags_from_category(seed.category, seed.name)) + list(seed.extra_tags)
-                _upsert_known_dish(prefs, seed.name, tags, seed.rating, today)
-            if option.restriction and option.restriction not in prefs.dietary_restrictions:
-                prefs.dietary_restrictions.append(option.restriction)
+                _upsert_known_dish(prefs, seed.name, list(seed.tags), seed.rating, today)
+            for restriction in option.restrictions:
+                if restriction not in prefs.dietary_restrictions:
+                    prefs.dietary_restrictions.append(restriction)
             if option.comment_note:
                 comment_lines.append(option.comment_note)
 

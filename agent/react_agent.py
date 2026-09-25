@@ -72,19 +72,48 @@ SLOT_SEARCH_STEP_MINUTES = 15
 # agent/data/menu_intake_2026-09-15.json), same discipline
 # preference_questions.py already follows for its seeded dishes.
 NAIVE_TAG_KEYWORDS = {
-    "paneer": ["veg", "jain"], "dal": ["dal"], "rice": ["rice"], "chawal": ["rice"],
+    "paneer": ["veg", "jain", "paneer"], "dal": ["dal"], "rice": ["rice"], "chawal": ["rice"],
     "gravy": ["gravy"], "curry": ["gravy"], "masala": ["gravy"], "sabzi": ["dry", "veg"],
     "chole": ["gravy", "veg", "chickpea"], "chana": ["chickpea"], "raita": ["curd-based"], "curd": ["curd-based"],
     "kheer": ["dessert", "sweet"], "halwa": ["sweet"], "ladoo": ["sweet"], "cake": ["sweet"],
     "pastry": ["dessert"], "malpua": ["sweet"], "chicken": ["non-vegetarian"],
-    "mutton": ["non-vegetarian"], "fish": ["non-vegetarian"], "egg": ["non-vegetarian"],
-    "risotto": ["fusion"], "fusion": ["fusion"], "manchurian": ["fusion", "spicy"],
+    "mutton": ["non-vegetarian"], "fish": ["non-vegetarian"],
+    # The campus mess is vegetarian + egg, so egg gets its own tag (for the
+    # onboarding "no egg" exclude) rather than "non-vegetarian".
+    "egg": ["egg"],
+    "risotto": ["fusion"], "fusion": ["fusion"], "manchurian": ["fusion", "spicy", "indo-chinese"],
     # Ingredient-level tags — e.g. Aloo Bhaji/Aloo Tomato Rassa/Dum Aloo
     # Banarasi/Potato 65 all share "potato" despite different categories.
     "aloo": ["potato"], "potato": ["potato"], "rajma": ["kidney-bean"],
     "lauki": ["bottle-gourd"], "parwal": ["pointed-gourd"], "turai": ["ridge-gourd"],
     "mushroom": ["mushroom"], "soya": ["soy"],
+    # Style tags the general onboarding questions (preference_questions.py)
+    # seed profile entries on — so a baseline answer like "avoid fried food"
+    # reaches dishes that haven't appeared on any board yet.
+    "pakoda": ["fried"], "wada": ["fried"], "samosa": ["fried"],
+    "kachori": ["fried"], "poori": ["fried"], "fried": ["fried"], "tempura": ["fried"],
+    " 65": ["fried", "spicy"], "spicy": ["spicy"], "chilli": ["spicy"], "chilly": ["spicy"],
+    "mirchi": ["spicy"], "schezwan": ["spicy", "indo-chinese"], "manchow": ["indo-chinese"],
+    "noodles": ["indo-chinese"], "hakka": ["indo-chinese"],
+    "idly": ["south-indian"], "idli": ["south-indian"], "upma": ["south-indian"],
+    "uttapam": ["south-indian"], "medu": ["south-indian"], "rasam": ["south-indian"],
+    "cornflakes": ["light"], "cut fruit": ["light"], "bread": ["light"],
+    "dahi": ["curd-based"], "taak": ["curd-based"], "butter milk": ["curd-based"],
 }
+
+# Words a keyword/restriction appears inside of without meaning it — "egg"
+# in "Assorted Veggies Tempura" isn't egg. Removed from a dish name before
+# substring matching, for tag inference and dietary restrictions alike.
+# Substring matching itself stays (so e.g. an allergy restriction "nut" still
+# catches "peanuts"/"coconut"); this only carves out known false positives.
+SUBSTRING_FALSE_POSITIVES = ("veggie",)
+
+
+def _name_for_matching(name: str) -> str:
+    lowered = name.lower()
+    for word in SUBSTRING_FALSE_POSITIVES:
+        lowered = lowered.replace(word, " ")
+    return lowered
 
 
 class GoogleAuthUnavailable(Exception):
@@ -239,7 +268,7 @@ def derive_tags_from_category(category: Optional[str], name: str) -> list[str]:
 
 
 def infer_tags_naive(name: str) -> list[str]:
-    lowered = name.lower()
+    lowered = _name_for_matching(name)
     tags: list[str] = []
     for keyword, keyword_tags in NAIVE_TAG_KEYWORDS.items():
         if keyword in lowered:
@@ -591,7 +620,7 @@ class MenuPreferenceMatchingSkill:
 
     def violates_dietary_restriction(self, name: str, tags: list[str], prefs: UserPreferences) -> bool:
         item_tags = {tag.lower() for tag in tags}
-        item_name = name.lower()
+        item_name = _name_for_matching(name)
         return any(
             restriction.lower() in item_tags or restriction.lower() in item_name
             for restriction in prefs.dietary_restrictions
