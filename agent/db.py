@@ -12,10 +12,15 @@ def get_engine():
     global _engine
     if _engine is None:
         database_url = os.environ["DATABASE_URL"]
-        # Railway injects the postgres:// scheme; SQLAlchemy 2.x's psycopg2
-        # dialect requires postgresql://.
-        if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql://", 1)
+        # Railway injects the postgres:// scheme. Name the driver explicitly
+        # rather than relying on SQLAlchemy's default for postgresql:// —
+        # that default switched from psycopg2 to psycopg (v3) in 2.1, which
+        # took the whole site down with "No module named 'psycopg'" the first
+        # time a rebuild picked 2.1 up. psycopg2-binary is what's installed.
+        for scheme in ("postgres://", "postgresql://"):
+            if database_url.startswith(scheme):
+                database_url = "postgresql+psycopg2://" + database_url[len(scheme):]
+                break
         _engine = create_engine(database_url, pool_pre_ping=True)
     return _engine
 
