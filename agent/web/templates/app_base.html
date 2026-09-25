@@ -10,7 +10,7 @@
       <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}>{{ ui.tab_icon(key, tab == key) }}{{ label }}</a>
       {% endfor %}
     </nav>
-    <p class="xs" style="padding:0 12px; color:rgba(120,113,108,.55)">{{ shell_week_label }}</p>
+    <p class="xs" style="padding:0 12px; color:var(--muted)">{{ shell_week_label }}</p>
   </aside>
 
   <main class="app-main">
