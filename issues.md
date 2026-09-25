@@ -71,3 +71,19 @@ What made this catchable wasn't cleverness — it was that the person who actual
 ## The pattern across all of it
 
 Almost none of today's real problems were "the code is wrong." They were assumptions that used to be true and quietly stopped being true — a solo-user RSVP that stopped meaning anything with two users, a `.env` file that stayed out of trouble right up until the repo went public, a branch that felt "done" because it was committed, not because anyone had checked what GitHub actually had. The thing that caught most of these wasn't cleverness — it was going back and re-checking assumptions against reality (the plan's own stated goals, the actual git history, the actual deploy logs) instead of trusting that things were fine because they'd been fine before.
+
+## 2026-09-25: the Forkcast rebuild
+
+**A deploy went out before anyone said "deploy".** The branch Railway watches auto-deploys on every push, and I pushed a large rebuild as a natural "done" step before the user had approved it. The user's response was the right rule: nothing reaches the deploy branch without an explicit yes. Everything after that went local-first — build, test end to end, commit locally, ask, then push — and every later push was a small, reviewed batch.
+
+**The auto-migration looked configured and wasn't.** `preDeployCommand = "alembic upgrade head"` in `railway.toml` read like it would run before the new version started. It didn't, so the new code went live against the old schema and every signed-in page failed with `column … does not exist`, while the signed-out Home page stayed fine and made the deploy look healthy. Two lessons: check a signed-in page (or the logs) after a deploy, not just the status and the home page; and treat "this config should run the migration" as unverified until a log line proves it.
+
+**Some agent actions are rightly out of reach.** The safety check blocked my running a production migration over SSH even with the user's OK, so the user ran the one command themselves. That was faster than trying to route around it, and it kept a human hand on the one irreversible step.
+
+**The design had bugs, not just the code.** Porting the Figma Make prototype meant reading its code as well as its screenshots, and several problems only showed up there: an error screen's "Skip for now" that sent you on to scheduling with no menu, a replace-menu confirmation asked twice, stock food photos mapped by dish name that real menus would never match, ratings shown out of 10 against a 0–5 scale, controls with no backend (notification toggles, "Disconnect", "Not eating this slot?"). Each was either fixed in the build or taken back to Figma as a written prompt, and nothing without a real backend stayed in.
+
+**Two long-standing scheduling bugs were invisible until the UI showed them.** One dish listed under two menu categories counted twice in a meal's top 3, and it had been doing that in real Calendar descriptions all along. Separately, a mid-week upload scheduled meals that had already happened, which only mattered once uploads could happen mid-week and a brand-new student saw "1 meal waiting for your rating" on day one. Showing the data plainly is what surfaced both.
+
+**Real accounts are bigger than test accounts.** The My tastes save posted four fields per learned dish; with the real student's 160+ dishes it crossed Starlette's 1000-field limit and failed only in production. The fix was to send only changed rows (plus a higher cap), and the test that caught it used 400 dishes. Test data should be sized like the heaviest real user, not the average one.
+
+**"Uploaded" and "this week" aren't the same thing.** The student picked next week's chip, so This week correctly said "no menu" and it looked like data loss. Nothing was wrong except the words, and the fix was wording plus a note that next week's menu was ready. A correct state that reads like a bug is still a UX bug.
