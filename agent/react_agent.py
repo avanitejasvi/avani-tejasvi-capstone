@@ -77,10 +77,7 @@ NAIVE_TAG_KEYWORDS = {
     "chole": ["gravy", "veg", "chickpea"], "chana": ["chickpea"], "raita": ["curd-based"], "curd": ["curd-based"],
     "kheer": ["dessert", "sweet"], "halwa": ["sweet"], "ladoo": ["sweet"], "cake": ["sweet"],
     "pastry": ["dessert"], "malpua": ["sweet"], "chicken": ["non-vegetarian"],
-    "mutton": ["non-vegetarian"], "fish": ["non-vegetarian"],
-    # The campus mess is vegetarian + egg, so egg gets its own tag (for the
-    # onboarding "no egg" exclude) rather than "non-vegetarian".
-    "egg": ["egg"],
+    "mutton": ["non-vegetarian"], "fish": ["non-vegetarian"], "egg": ["non-vegetarian"],
     "risotto": ["fusion"], "fusion": ["fusion"], "manchurian": ["fusion", "spicy", "indo-chinese"],
     # Ingredient-level tags — e.g. Aloo Bhaji/Aloo Tomato Rassa/Dum Aloo
     # Banarasi/Potato 65 all share "potato" despite different categories.

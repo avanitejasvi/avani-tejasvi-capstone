@@ -116,7 +116,6 @@ QUESTIONS = [
                    restrictions=("paneer", "curd", "dahi", "raita", "milk", "taak", "kheer", "cheese", "ghee")),
             Option("gluten", "Gluten / wheat — roti, bread, poori",
                    restrictions=("roti", "phulka", "poori", "paratha", "bread", "pav", "naan")),
-            Option("egg", "Eggs", restrictions=("egg",)),
             Option("paneer", "Paneer", restrictions=("paneer",)),
         ),
     ),
