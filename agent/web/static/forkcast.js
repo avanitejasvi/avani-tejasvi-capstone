@@ -412,6 +412,16 @@
       $("[data-choice-out]", row).value = e.target.value;
       save.disabled = !$$(".learned-row", tastes).some(r => $("[data-choice-out]", r).value !== $("input[name=current]", r).value);
     });
+    // Send only the rows that changed — a long learned history would
+    // otherwise post thousands of fields for a one-dish edit.
+    tastes.addEventListener("submit", () => {
+      $$("[data-choice]", tastes).forEach(i => { i.disabled = true; });
+      $$(".learned-row", tastes).forEach(r => {
+        if ($("[data-choice-out]", r).value === $("input[name=current]", r).value) {
+          $$("input", r).forEach(i => { i.disabled = true; });
+        }
+      });
+    });
     $$("[data-show-all]", tastes).forEach(btn => btn.addEventListener("click", () => {
       $$("[data-extra]", btn.closest("[data-group]")).forEach(r => { r.hidden = false; });
       btn.remove();

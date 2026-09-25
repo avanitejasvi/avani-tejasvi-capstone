@@ -83,8 +83,10 @@ async def edit_preference(request: Request, user: User = Depends(get_current_use
     selected "choice"; only rows where choice != current get applied.
     apply_feedback isn't idempotent (it bumps times_eaten/rating on every
     real call), so resubmitting every row's already-current value on a
-    plain "Save changes" with nothing touched must be a no-op."""
-    form = await request.form()
+    plain "Save changes" with nothing touched must be a no-op. The page only
+    submits changed rows, but a long history can still be large, so the
+    field cap is raised above Starlette's default of 1000."""
+    form = await request.form(max_fields=20000)
     dish_names = form.getlist("dish_name")
     currents = form.getlist("current")
     choices = form.getlist("choice")
