@@ -3,15 +3,13 @@
 {% block title %}Forkcast — know what's good before you go{% endblock %}
 {% block body %}
 <main class="screen">
-  <div style="position:absolute; top:24px; right:16px" aria-hidden="true">{{ ui.circular_badge(110) }}</div>
-
   <div class="screen-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding-top:32px">
     <h1>{{ ui.logo(52) }}</h1>
 
-    <div class="row" style="justify-content:center; margin:8px 0" role="img" aria-label="A thali with a fork and knife">
-      {{ ui.fork() }}
+    <div class="row" style="justify-content:center; margin:8px 0" role="img" aria-label="A thali with a spoon and a steel tumbler">
+      {{ ui.spoon() }}
       <div class="hero-plate"><img src="/static/img/thali.jpg" alt="A traditional Indian vegetarian thali — dal, rice, roti and sabzi"></div>
-      {{ ui.knife() }}
+      {{ ui.tumbler() }}
     </div>
 
     <div style="text-align:center; max-width:300px">
