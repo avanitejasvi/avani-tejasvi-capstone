@@ -23,7 +23,7 @@ logger = logging.getLogger("agent.jobs.refresh_descriptions")
 
 def _refresh_one(repo: Repository, matcher: MenuPreferenceMatchingSkill, row) -> bool:
     credentials = repo.build_user_credentials(row.user_id)  # raises GoogleAuthUnavailable -> caller counts as failed
-    intake = repo.get_menu_intake(row.event_date)
+    intake = repo.get_menu_intake(row.event_date, row.user_id)
     if intake is None:
         return False  # menu since removed; nothing to re-score against
 
@@ -50,13 +50,15 @@ def _refresh_one(repo: Repository, matcher: MenuPreferenceMatchingSkill, row) ->
     return True
 
 
-def refresh_week(week_start: date, dry_run: bool = False) -> dict:
+def refresh_week(week_start: date, dry_run: bool = False, user_id=None) -> dict:
+    """user_id narrows the run to one student — routes_menu uses that after
+    a student replaces their own menu for a week that's already scheduled."""
     db = get_sessionmaker()()
     try:
         repo = Repository(db)
         matcher = MenuPreferenceMatchingSkill()
         dates = [week_start + timedelta(days=i) for i in range(7)]
-        rows = repo.list_scheduled_meals_in_range(dates)
+        rows = [r for r in repo.list_scheduled_meals_in_range(dates) if user_id is None or r.user_id == user_id]
         summary = {"attempted": len(rows), "refreshed": 0, "unchanged": 0, "failed": 0}
 
         for row in rows:

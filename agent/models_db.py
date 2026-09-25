@@ -55,19 +55,26 @@ class Preferences(Base):
     known_dishes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     comment: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     tag_weights_note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    # Drives the first-login redirect to /settings — false until the user
-    # has saved dietary_restrictions/skip_meal_slots at least once.
+    # Drives the first-login redirect into onboarding — false until the user
+    # has saved the baseline preferences at least once.
     onboarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # The raw baseline-question answers ({question_id: option value(s) or
+    # text}), kept only so the form can show a returning student what they
+    # picked last time. Scoring never reads this — preference_questions.
+    # apply_answers turns answers into known_dishes/restrictions as before.
+    intake_answers: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class MenuIntakeRow(Base):
-    """Shared across every user — one row per calendar date, replacing
-    menu_intake_<date>.json. No `processed` flag: a date "has a menu" iff a
-    row exists for it."""
+    """One row per (student, calendar date) — each student uploads and
+    confirms their own weekly menu photo, so nobody else's upload changes
+    what gets scheduled for them. No `processed` flag: a date "has a menu"
+    for a student iff a row exists for it."""
 
     __tablename__ = "menu_intake"
 
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
     event_date: Mapped[date_] = mapped_column(Date, primary_key=True)
     source_image_id: Mapped[Optional[str]] = mapped_column(String, nullable=True)  # sha256 hex — no image is ever stored
     extracted_items: Mapped[list] = mapped_column(JSONB, nullable=False)
@@ -78,15 +85,20 @@ class MenuIntakeRow(Base):
 
 class PendingMenuUpload(Base):
     """Holds a Gemini extraction between the upload step and the confirm
-    step — nothing lands in menu_intake until the uploader confirms."""
+    step — nothing lands in menu_intake until the uploader confirms.
+    Extraction runs in the background after the upload request returns
+    (so onboarding can carry on while Gemini reads the photo): `status` is
+    "processing" until it finishes, then "ready" or "error"."""
 
     __tablename__ = "pending_menu_uploads"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     week_start: Mapped[date_] = mapped_column(Date, nullable=False)
-    extracted_items: Mapped[list] = mapped_column(JSONB, nullable=False)
+    extracted_items: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
     sha256: Mapped[str] = mapped_column(String, nullable=False)
+    status: Mapped[str] = mapped_column(String, default="processing", nullable=False)
+    error: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

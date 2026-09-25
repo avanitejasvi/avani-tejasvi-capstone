@@ -1,56 +1,85 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Account settings — meal-match-agent</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
-    label { display: block; margin: 16px 0 4px; font-weight: 600; }
-    input[type=text] { width: 100%; padding: 8px; box-sizing: border-box; }
-    .slot { display: block; margin: 4px 0; font-weight: normal; }
-    button { margin-top: 20px; padding: 8px 16px; }
-    section { border-top: 1px solid #eee; padding-top: 16px; margin-top: 24px; }
-    .danger { border-color: #e5484d; }
-    .danger button { background: #e5484d; color: #fff; border: none; border-radius: 6px; }
-    .danger p { font-weight: normal; color: #555; }
-  </style>
-</head>
-<body>
-  <nav><a href="/">&larr; Home</a> · <a href="/preferences">Preferences</a></nav>
-  <h1>Account settings</h1>
-  <p>Signed in as {{ user.display_name or user.email }}.</p>
+{% extends "app_base.html" %}
+{% block title %}Settings — Forkcast{% endblock %}
+{% block main %}
+<h1 class="h1-tab">Settings</h1>
 
-  <section>
-    <form method="post" action="/settings">
-      <label for="llm_provider">Use your own AI key for feedback rating (optional)</label>
-      <p style="font-weight: normal; margin: 0 0 8px;">
-        {% if current_llm_provider %}
-          Currently using your own <strong>{{ current_llm_provider }}</strong> key.
-          Leave the key field blank to keep it, or tick "remove" below to clear it.
-        {% else %}
-          Not set — feedback rating uses a shared key by default. Add your own below if you'd rather it use yours.
-        {% endif %}
-      </p>
-      <select name="llm_provider">
-        {% for p in llm_providers %}
-        <option value="{{ p }}" {% if p == current_llm_provider %}selected{% endif %}>{{ p }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" id="llm_api_key" name="llm_api_key" placeholder="paste your API key here">
-      <label class="slot"><input type="checkbox" name="remove_llm_key"> Remove my saved key</label>
+<section>
+  <h2 class="section-label" style="margin-bottom:8px">Account</h2>
+  <div class="card">
+    <div class="card-row" style="padding:16px">
+      <span class="avatar avatar-lg" aria-hidden="true">{{ initial }}</span>
+      <div class="grow">
+        <p class="small" style="font-weight:600">{{ user.display_name or first_name }}</p>
+        <p class="xs muted">{{ user.email }}</p>
+      </div>
+    </div>
+    <a class="card-row" style="text-decoration:none" href="/menu/upload?flow=menu">
+      <span class="grow">
+        <span class="small" style="font-weight:500; display:block">Update your menu</span>
+        <span class="xs muted">Upload a new photo for this week</span>
+      </span>
+      {{ ui.chevron_right() }}
+    </a>
+  </div>
+</section>
 
-      <button type="submit">Save</button>
-    </form>
-  </section>
+<section>
+  <h2 class="section-label" style="margin-bottom:8px">Google Calendar</h2>
+  <div class="card card-pad stack">
+    {% if calendar_connected %}
+    <p class="row small" style="gap:8px; font-weight:600">{{ ui.check_icon() }} Connected</p>
+    <p class="xs muted">{{ user.email }}</p>
+    <a class="link-teal" href="{{ calendar_url }}" target="_blank" rel="noopener">Open Google Calendar ↗</a>
+    {% else %}
+    <p class="small" style="font-weight:600; color:#B91C1C">Access expired</p>
+    <p class="xs muted">Reconnect Google to keep receiving meal picks as calendar events.</p>
+    <a class="btn btn-danger btn-sm" href="/auth/login">Reconnect Google</a>
+    {% endif %}
+  </div>
+</section>
 
-  <section class="danger">
-    <h2>Delete account</h2>
-    <p>Permanently removes your saved preferences, upload/scheduling history, and any AI key you've added —
-       and revokes this app's access to your Google Calendar. This can't be undone.</p>
-    <form method="post" action="/settings/delete"
-          onsubmit="return confirm('Delete your account and revoke Calendar access? This can\'t be undone.');">
-      <button type="submit">Delete my account</button>
-    </form>
-  </section>
-</body>
-</html>
+<section>
+  <h2 class="section-label" style="margin-bottom:8px">Your own AI key (optional)</h2>
+  <form class="card card-pad stack" method="post" action="/settings">
+    <p class="xs muted" style="line-height:1.6">Used only to understand your feedback notes. Without one, a shared key is used.</p>
+    {% if current_llm_provider %}
+    <p class="row small" style="gap:8px; font-weight:600">{{ ui.check_icon() }} Using your own {{ current_llm_provider }} key</p>
+    <button type="submit" name="remove_llm_key" value="on" class="link-danger" style="align-self:flex-start">Remove my key</button>
+    {% else %}
+    <label class="sr-only" for="llm_provider">AI provider</label>
+    <select class="select" id="llm_provider" name="llm_provider">
+      {% for value, label in llm_providers %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="llm_api_key">API key</label>
+    <input class="input" type="password" id="llm_api_key" name="llm_api_key" placeholder="Paste your API key…" autocomplete="off" data-key-input>
+    <button type="submit" class="btn btn-primary btn-sm" style="align-self:flex-start" data-key-save disabled>Save</button>
+    {% endif %}
+  </form>
+</section>
+
+<div class="card">
+  <a class="card-row small" style="font-weight:600; color:#EF4444; text-decoration:none; padding:14px 16px" href="/auth/logout">Sign out</a>
+</div>
+
+<section>
+  <h2 class="section-label" style="margin-bottom:8px">Danger zone</h2>
+  <div class="card card-pad stack">
+    <p class="small" style="font-weight:600">Delete account</p>
+    <p class="xs muted" style="line-height:1.6">Permanently removes your preferences, history and AI key, and revokes Calendar access. This can't be undone.</p>
+    <button type="button" class="btn btn-secondary btn-sm" style="align-self:flex-start; color:#DC2626; border-color:#FECACA" data-open-dialog="delete-dialog">Delete my account</button>
+  </div>
+</section>
+{% endblock %}
+
+{% block overlays %}
+<div class="dialog-backdrop" id="delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-title" hidden>
+  <form class="dialog" method="post" action="/settings/delete">
+    <h3 id="delete-title">Delete your account?</h3>
+    <p>This permanently removes your preferences, history and AI key, and revokes Calendar access. This can't be undone.</p>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+      <button type="submit" class="btn btn-danger">Delete</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

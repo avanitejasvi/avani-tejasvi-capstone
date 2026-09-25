@@ -72,6 +72,7 @@ class Question:
     help: Optional[str] = None
     options: tuple = ()
     label: Optional[str] = None  # short prefix used for "text" kind comment lines
+    placeholder: Optional[str] = None  # "text" kind only
 
 
 def _scale(name: str, tags: tuple, *levels):
@@ -243,7 +244,8 @@ QUESTIONS = [
     Question(
         id="anything_else",
         kind="text",
-        prompt="Anything else? (e.g. a dish you love, or \"nothing too oily\")",
+        prompt="Anything else?",
+        placeholder="e.g. a dish you love, or \"nothing too oily\"",
         label="Note",
     ),
 ]
@@ -285,6 +287,100 @@ def free_text_restrictions(prefs: UserPreferences) -> list:
         r for r in prefs.dietary_restrictions
         if r.lower() not in covered and r.lower() not in LEGACY_RESTRICTIONS
     ]
+
+
+# --- how the onboarding form lays these questions out ------------------------
+
+CATEGORIES = [(1, "Restrictions"), (2, "Main meals"), (3, "Breakfast & extras"), (4, "About you")]
+
+# "other_excludes" (free-text hard excludes) and "skip_meal_slots" aren't
+# Questions — routes_preferences handles both directly, as before — but they
+# sit in the same step sequence.
+STEPS = [
+    (1, ["hard_excludes", "other_excludes"]),
+    (1, ["skip_meal_slots"]),
+    (2, ["spice", "gravy_vs_dry", "rice_vs_roti"]),
+    (2, ["dal", "paneer"]),
+    (2, ["fried", "indo_chinese"]),
+    (3, ["breakfast", "sweets"]),
+    (3, ["curd", "salad"]),
+    (4, ["new_dishes", "anything_else"]),
+]
+
+# A question is moot once an earlier hard exclude rules its food out
+# entirely — it's hidden (and not submitted) while any of these are ticked.
+HIDE_WHEN_EXCLUDED = {
+    "rice_vs_roti": {"gluten"},
+    "paneer": {"paneer", "dairy"},
+    "curd": {"dairy"},
+}
+
+# Shorter row labels for the My tastes summary.
+SHORT_LABELS = {
+    "hard_excludes": "Hard excludes", "other_excludes": "Other excludes", "skip_meal_slots": "Always skip",
+    "spice": "Spice", "gravy_vs_dry": "Texture preference", "rice_vs_roti": "Grain preference",
+    "dal": "Dal", "paneer": "Paneer", "fried": "Fried food", "indo_chinese": "Indo-Chinese",
+    "breakfast": "Breakfast style", "sweets": "Desserts", "curd": "Curd / raita", "salad": "Salads",
+    "new_dishes": "New dishes", "anything_else": "Other notes",
+}
+
+QUESTIONS_BY_ID = {q.id: q for q in QUESTIONS}
+
+
+def record_answers(previous: dict, form) -> dict:
+    """The raw answers to keep for pre-filling the form next time. The form
+    posts a hidden "shown" field for every question that was visible, so a
+    question that was shown but left empty (a multi-select with nothing
+    ticked, a cleared text box) counts as cleared, while one that wasn't
+    shown at all — hidden by an exclude — keeps whatever was saved before."""
+    shown = set(form.getlist("shown"))
+    answers = dict(previous)
+    for q in QUESTIONS:
+        if q.id not in shown:
+            continue
+        if q.kind == "multi":
+            valid = {o.value for o in q.options}
+            answers[q.id] = [v for v in form.getlist(q.id) if v in valid]
+        elif q.kind == "single":
+            value = form.get(q.id)
+            if value in {o.value for o in q.options}:
+                answers[q.id] = value
+        else:
+            answers[q.id] = (form.get(q.id) or "").strip()
+    return {k: v for k, v in answers.items() if v not in ("", [], None)}
+
+
+def answer_summary(answers: dict, prefs: UserPreferences) -> list:
+    """[(category label, [(row label, display text or None)])] for My tastes.
+    Hard excludes come from the saved restrictions themselves, so they're
+    right even for students who onboarded before answers were recorded."""
+    excludes = [o.label.split(" — ")[0] for o in HARD_EXCLUDES.options if o.value in selected_excludes(prefs)]
+    special = {
+        "hard_excludes": ", ".join(excludes) or None,
+        "other_excludes": ", ".join(free_text_restrictions(prefs)) or None,
+        "skip_meal_slots": ", ".join(s.replace("_", " ").capitalize() for s in prefs.skip_meal_slots) or None,
+    }
+    summary = []
+    for cat_id, cat_label in CATEGORIES:
+        rows = []
+        for step_cat, ids in STEPS:
+            if step_cat != cat_id:
+                continue
+            for qid in ids:
+                if qid in special:
+                    rows.append((SHORT_LABELS[qid], special[qid]))
+                    continue
+                q = QUESTIONS_BY_ID[qid]
+                value = answers.get(qid)
+                if q.kind == "text":
+                    display = value or None
+                else:
+                    labels = {o.value: o.label for o in q.options}
+                    values = value if isinstance(value, list) else [value] if value else []
+                    display = ", ".join(labels[v] for v in values if v in labels) or None
+                rows.append((SHORT_LABELS[qid], display))
+        summary.append((cat_label, rows))
+    return summary
 
 
 def _upsert_known_dish(prefs: UserPreferences, name: str, tags: list, rating: float, today) -> None:

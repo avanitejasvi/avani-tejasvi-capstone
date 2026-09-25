@@ -1,65 +1,109 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Preferences — meal-match-agent</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
-    label { display: block; margin: 16px 0 4px; font-weight: 600; }
-    input[type=text] { width: 100%; padding: 8px; box-sizing: border-box; }
-    .slot { display: block; margin: 4px 0; font-weight: normal; }
-    button { margin-top: 20px; padding: 8px 16px; }
-    .muted { font-weight: normal; color: #555; margin: 0 0 20px; }
-    .question { border-top: 1px solid #eee; padding-top: 16px; margin-top: 16px; }
-    .question .help { font-weight: normal; font-size: 0.9em; color: #666; margin: 2px 0 8px; }
-  </style>
-</head>
-<body>
-  <nav><a href="/">&larr; Home</a> · <a href="/checkin">Weekly check-in</a> · <a href="/settings">Account settings</a></nav>
-  <h1>Preferences (baseline profile)</h1>
-  <p>This is who you are as an eater — stable stuff that doesn't change week to week, {{ user.display_name or user.email }}.
-     For "what do I feel like eating <em>this</em> week," use <a href="/checkin">Weekly check-in</a> instead —
-     that one looks at the actual current board, not these examples.</p>
-  <p class="muted">These are general questions — no menu needed. They give the agent a starting point for
-     dishes it hasn't seen yet; your real RSVPs and feedback will take over from there. Skip anything you're unsure about.</p>
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Your preferences — Forkcast{% endblock %}
 
-  <form method="post" action="/preferences">
-    {% for q in questions %}
-    <div class="question">
-      <label>{{ q.prompt }}</label>
-      {% if q.help %}<p class="help">{{ q.help }}</p>{% endif %}
-      {% if q.kind == 'text' %}
-      <input type="text" name="{{ q.id }}" placeholder="optional">
-      {% else %}
-        {% for opt in q.options %}
-        <label class="slot">
-          <input type="{{ 'checkbox' if q.kind == 'multi' else 'radio' }}" name="{{ q.id }}" value="{{ opt.value }}"
-                 {% if q.id == 'hard_excludes' and opt.value in selected_excludes %}checked{% endif %}>
-          {{ opt.label }}
-        </label>
-        {% endfor %}
-      {% endif %}
-    </div>
+{% macro question_block(qid, cat) -%}
+{% if qid == "other_excludes" %}
+<div class="q" data-q="{{ qid }}" data-prompt="Anything else to hard-exclude?">
+  <label class="q-label" for="other_excludes" style="display:block">Anything else to hard-exclude?</label>
+  <input class="input" type="text" id="other_excludes" name="dietary_restrictions" value="{{ other_excludes }}" placeholder="e.g. an allergy not listed above" data-answer>
+  <p class="helper">Separate with commas, e.g. an allergy not covered above</p>
+</div>
+{% elif qid == "skip_meal_slots" %}
+<fieldset class="q" data-q="{{ qid }}" data-prompt="Meal slots to always skip">
+  <legend class="q-label">Meal slots to always skip</legend>
+  <div class="chips">
+    {% for slot, label in meal_slots %}
+    <label class="chip"><input type="checkbox" name="skip_meal_slots" value="{{ slot }}" data-answer {% if slot in skip_slots %}checked{% endif %}>{{ label }}</label>
     {% endfor %}
+  </div>
+</fieldset>
+{% else %}
+{% set q = questions[qid] %}
+{% set saved = answers.get(qid) %}
+{% if q.kind == "text" %}
+<div class="q" data-q="{{ qid }}" data-prompt="{{ q.prompt }}">
+  <input type="hidden" name="shown" value="{{ qid }}">
+  <label class="q-label {% if cat == 4 %}is-optional{% endif %}" for="q-{{ qid }}" style="display:block">{{ q.prompt }}</label>
+  <input class="input" type="text" id="q-{{ qid }}" name="{{ qid }}" value="{{ saved or '' }}" placeholder="{{ q.placeholder or '' }}" data-answer>
+</div>
+{% else %}
+<fieldset class="q" data-q="{{ qid }}" data-prompt="{{ q.prompt }}" data-kind="{{ q.kind }}"
+          {% if hide_when.get(qid) %}data-hide-when="{{ hide_when[qid]|join(',') }}"{% endif %}
+         >
+  <input type="hidden" name="shown" value="{{ qid }}">
+  <legend class="q-label {% if cat == 4 %}is-optional{% endif %}">{{ q.prompt }}</legend>
+  <div class="chips">
+    {% for o in q.options %}
+    {% set on = (o.value in saved) if saved is sequence and saved is not string else (o.value == saved) %}
+    <label class="chip"><input type="{{ 'checkbox' if q.kind == 'multi' else 'radio' }}" name="{{ qid }}" value="{{ o.value }}" data-answer {% if on %}checked{% endif %}>{{ o.label }}</label>
+    {% endfor %}
+  </div>
+</fieldset>
+{% endif %}
+{% endif %}
+{%- endmacro %}
 
-    <div class="question">
-      <label for="dietary_restrictions">Anything else to hard-exclude? (comma-separated, e.g. an allergy not covered above)</label>
-      <input type="text" id="dietary_restrictions" name="dietary_restrictions"
-             value="{{ free_text_restrictions | join(', ') }}">
+{% block body %}
+<form class="screen" method="post" action="/preferences" data-prefs data-back-url="{{ back_url }}">
+  <input type="hidden" name="flow" value="{{ flow }}">
+  <input type="hidden" name="pending" value="{{ pending }}">
+
+  <div data-questions>
+    <div class="between" style="margin-bottom:20px">
+      {{ ui.back_button("Back", 'data-prefs-back') }}
+      <button type="button" class="link-btn" data-prefs-skip>Skip</button>
     </div>
 
-    <div class="question">
-      <label>Meal slots to always skip</label>
-      {% for slot in meal_slots %}
-      <label class="slot">
-        <input type="checkbox" name="skip_meal_slots" value="{{ slot }}"
-               {% if slot in prefs.skip_meal_slots %}checked{% endif %}>
-        {{ slot.replace('_', ' ') }}
-      </label>
+    <div class="cat-chips" role="tablist" aria-label="Sections">
+      {% for cat_id, cat_label in categories %}
+      <button type="button" class="cat-chip" data-jump-cat="{{ cat_id }}">{{ cat_label }}</button>
       {% endfor %}
     </div>
 
-    <button type="submit">Save</button>
-  </form>
-</body>
-</html>
+    <div style="margin-bottom:24px">
+      <p class="xs muted" style="margin-bottom:8px" data-step-count aria-live="polite"></p>
+      <div class="progress"><span data-step-bar style="width:0"></span></div>
+    </div>
+
+    <div class="intro-box" data-intro>
+      These are general questions — no menu needed. They give Forkcast a starting point for dishes it hasn't seen yet; your feedback will take over from there. Skip anything you're unsure about.
+    </div>
+
+    <div class="row" style="gap:8px; margin-bottom:20px" data-optional-note hidden>
+      <span class="section-label" style="color:rgba(120,113,108,.6)">About you</span>
+      <span class="xs" style="font-weight:500; color:rgba(120,113,108,.5); background:rgba(0,0,0,.05); padding:2px 8px; border-radius:999px">optional</span>
+    </div>
+
+    {% for cat, ids in steps %}
+    <section data-step data-cat="{{ cat }}" {% if not loop.first %}hidden{% endif %}>
+      {% for qid in ids %}{{ question_block(qid, cat) }}{% endfor %}
+    </section>
+    {% endfor %}
+
+    <div style="padding-top:8px">
+      <button type="button" class="btn btn-primary btn-block" data-prefs-next>Next</button>
+    </div>
+  </div>
+
+  <div data-review hidden>
+    <div style="margin-bottom:24px">{{ ui.back_button("Back", 'data-review-back') }}</div>
+    <h1 class="h1" style="margin-bottom:{{ '8px' if returning else '28px' }}">Your preferences</h1>
+    {% if returning %}<p class="small muted" style="margin-bottom:24px">Your saved answers are shown below. Edit any section.</p>{% endif %}
+    <div class="stack-lg">
+      {% for cat_id, cat_label in categories %}
+      <div>
+        <div class="between" style="margin-bottom:12px">
+          <span class="section-label" style="font-size:12px; font-weight:600">{{ cat_label }}</span>
+          <button type="button" class="link-brand xs" data-jump-cat="{{ cat_id }}">Edit</button>
+        </div>
+        <div class="card" data-review-cat="{{ cat_id }}"></div>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="padding-top:32px">
+      <button type="submit" class="btn btn-primary btn-block">Save preferences</button>
+    </div>
+  </div>
+</form>
+{% endblock %}

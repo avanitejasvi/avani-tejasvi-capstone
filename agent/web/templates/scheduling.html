@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Almost there — Forkcast{% endblock %}
+{% block body %}
+<main class="screen screen-center" style="gap:40px" data-scheduling data-next-url="{{ next_url }}">
+  {{ ui.spinner() }}
+  <div style="width:100%; max-width:320px" aria-live="polite">
+    <div data-sched-running>
+      <p class="display fade-in" style="font-size:17px" data-sched-message>Matching dishes to your tastes…</p>
+      <p class="small muted" style="margin-top:6px" data-sched-count hidden></p>
+      <p class="small muted" style="margin-top:8px">This can take up to 2 minutes</p>
+    </div>
+    <div data-sched-slow hidden>
+      <p class="display" style="font-size:16px; line-height:1.4">This is taking longer than usual — we'll keep going in the background.</p>
+      <a class="btn btn-secondary" style="margin-top:16px" href="{{ next_url }}">Continue</a>
+    </div>
+    <div data-sched-reauth hidden>
+      <p class="display" style="font-size:16px; line-height:1.4">Your Google Calendar access has expired, so we couldn't add your meals.</p>
+      <a class="btn btn-primary" style="margin-top:16px" href="/auth/login">Reconnect Google</a>
+    </div>
+  </div>
+</main>
+{% endblock %}

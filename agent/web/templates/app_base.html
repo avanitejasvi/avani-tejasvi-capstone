@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% set app_tabs = [("week", "/", "This week"), ("menu", "/menu", "Menu"), ("tastes", "/tastes", "My tastes"), ("settings", "/settings", "Settings")] %}
+{% block body %}
+<div class="app">
+  <aside class="sidebar">
+    <div style="padding:0 12px">{{ ui.logo(20) }}</div>
+    <nav aria-label="Main">
+      {% for key, href, label in app_tabs %}
+      <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}>{{ ui.tab_icon(key, tab == key) }}{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <p class="xs" style="padding:0 12px; color:rgba(120,113,108,.55)">{{ shell_week_label }}</p>
+  </aside>
+
+  <main class="app-main">
+    {% block main %}{% endblock %}
+  </main>
+
+  <nav class="tabbar" aria-label="Main">
+    {% for key, href, label in app_tabs %}
+    <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}>{{ ui.tab_icon(key, tab == key) }}<span>{{ label }}</span></a>
+    {% endfor %}
+  </nav>
+</div>
+{% block overlays %}{% endblock %}
+{% endblock %}

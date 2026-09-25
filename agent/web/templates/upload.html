@@ -1,29 +1,84 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Upload menu — meal-match-agent</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
-    label { display: block; margin: 16px 0 4px; font-weight: 600; }
-    input { padding: 8px; }
-    button { margin-top: 20px; padding: 8px 16px; }
-  </style>
-</head>
-<body>
-  <nav><a href="/">&larr; Home</a></nav>
-  <h1>Upload this week's mess menu</h1>
-  <p>One photo of the whole week's board — Gemini reads it and everyone's meals get scheduled from it.
-     JPEG, PNG, or WEBP, up to 10&nbsp;MB.</p>
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Add this week's menu — Forkcast{% endblock %}
+{% block body %}
+{% set onboarding = flow == "onboarding" %}
+<main class="screen" data-upload data-flow="{{ flow }}"
+      data-continue-url="{{ '/preferences?flow=onboarding' if onboarding else '/menu' }}">
+  <div style="margin-bottom:32px">{{ ui.back('/onboarding/how' if onboarding else '/menu') }}</div>
 
-  <form method="post" action="/menu/upload" enctype="multipart/form-data">
-    <label for="week_start">Week starting (Monday)</label>
-    <input type="date" id="week_start" name="week_start" value="{{ default_week_start.isoformat() }}" required>
+  <form class="screen-body" data-upload-form action="/menu/upload" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="flow" value="{{ flow }}">
+    <h1 class="h1" style="margin-bottom:8px">Add this week's menu</h1>
+    <p class="lede" style="margin-bottom:28px">
+      One photo covers both messes.{% if onboarding %} Forkcast reads it in the background while you set your preferences.{% endif %}
+    </p>
 
-    <label for="image">Menu photo</label>
-    <input type="file" id="image" name="image" accept="image/jpeg,image/png,image/webp" required>
+    <fieldset style="border:0; padding:0; margin:0 0 20px">
+      <legend class="section-label" style="margin-bottom:8px; letter-spacing:.06em">Week of</legend>
+      <div class="chips">
+        {% for w in weeks %}
+        <label class="chip">
+          <input type="radio" name="week_start" value="{{ w.value }}" data-uploaded="{{ 'true' if w.uploaded else 'false' }}" data-label="{{ w.label }}" {% if w.value == selected_week %}checked{% endif %}>
+          {{ w.label }}
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
 
-    <button type="submit">Extract menu</button>
+    <div data-state="already" hidden>
+      <div class="done-card">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="9" fill="#34A853" fill-opacity="0.12"/><path d="M5.5 10.5l3 3 6-7" stroke="#34A853" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="grow">
+          <p class="small" style="font-weight:600">You've already uploaded this week's menu ✓</p>
+          <p class="xs muted" data-week-label></p>
+        </div>
+        <button type="button" class="link-brand xs" data-open-dialog="replace-dialog">Replace it</button>
+      </div>
+    </div>
+
+    <div data-state="pick">
+      <label class="dropzone" data-dropzone>
+        <input type="file" name="image" accept="image/jpeg,image/png,image/webp" class="sr-only" data-file-input>
+        {{ ui.upload_icon(28, "#C96A00") }}
+        <span class="dropzone-title">Upload a photo of this week's menu</span>
+        <span class="row" style="gap:6px">{{ ui.tag("Rasoi") }}{{ ui.tag("Aahar") }}<span class="xs muted">· covers both</span></span>
+        <span class="xs" style="color:rgba(120,113,108,.7)">JPEG · PNG · WEBP</span>
+      </label>
+    </div>
+
+    <div data-state="file" hidden>
+      <div class="card file-card">
+        <div class="thumb"><img alt="Preview of your menu photo" data-thumb></div>
+        <div class="card-row">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 13l4-4 3 3 4-5 3 6H2z" fill="#78716C" opacity="0.5"/><circle cx="5" cy="5" r="1.5" fill="#78716C" opacity="0.5"/><rect x="0.75" y="0.75" width="14.5" height="14.5" rx="2.25" stroke="#78716C" stroke-width="1.5"/></svg>
+          <span class="dish" data-file-name style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap"></span>
+          <button type="button" class="icon-btn" aria-label="Remove photo" data-remove-file>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M11.5 4.5L4.5 11.5M4.5 4.5l7 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-danger" role="alert" data-upload-error style="margin-top:16px" hidden>{{ ui.info_icon() }}<span></span></div>
   </form>
-</body>
-</html>
+
+  <div class="screen-foot">
+    <button type="button" class="btn btn-primary btn-block" data-upload-submit disabled>Upload menu</button>
+    {% if onboarding %}
+    <a class="btn btn-secondary btn-block" href="/preferences?flow=onboarding" data-upload-later>Upload later</a>
+    {% endif %}
+  </div>
+
+  <div class="dialog-backdrop" id="replace-dialog" role="dialog" aria-modal="true" aria-labelledby="replace-title" hidden>
+    <div class="dialog">
+      <h3 id="replace-title">Replace your menu for this week?</h3>
+      <p>This replaces the one you uploaded earlier.</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" data-close-dialog>Cancel</button>
+        <button type="button" class="btn btn-primary" data-replace-confirm>Replace</button>
+      </div>
+    </div>
+  </div>
+</main>
+{% endblock %}

@@ -6,7 +6,7 @@ import needed on that side — see the Protocol's own docstring for why).
 """
 import os
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 from google.oauth2.credentials import Credentials
@@ -175,6 +175,18 @@ class Repository:
         row = self.db.get(Preferences, user_id)
         return bool(row and row.onboarded)
 
+    def load_intake_answers(self, user_id) -> dict:
+        row = self.db.get(Preferences, user_id)
+        return dict(row.intake_answers or {}) if row is not None else {}
+
+    def save_intake_answers(self, user_id, answers: dict) -> None:
+        row = self.db.get(Preferences, user_id)
+        if row is None:
+            row = Preferences(user_id=user_id)
+            self.db.add(row)
+        row.intake_answers = answers
+        self.db.commit()
+
     def mark_onboarded(self, user_id) -> None:
         row = self.db.get(Preferences, user_id)
         if row is not None:
@@ -216,10 +228,10 @@ class Repository:
             self.db.delete(row)
             self.db.commit()
 
-    # --- menu intake -----------------------------------------------------
+    # --- menu intake (per student) ----------------------------------------
 
-    def get_menu_intake(self, event_date: date) -> Optional[MenuIntake]:
-        row = self.db.get(MenuIntakeRow, event_date)
+    def get_menu_intake(self, event_date: date, user_id) -> Optional[MenuIntake]:
+        row = self.db.get(MenuIntakeRow, (user_id, event_date))
         if row is None:
             return None
         return MenuIntake(
@@ -228,28 +240,52 @@ class Repository:
             extracted_items=[ExtractedDish(**item) for item in row.extracted_items],
         )
 
-    def weeks_menu_dates_present(self, dates: list[date]) -> set[date]:
-        return set(self.db.scalars(select(MenuIntakeRow.event_date).where(MenuIntakeRow.event_date.in_(dates))))
+    def weeks_menu_dates_present(self, dates: list[date], user_id) -> set[date]:
+        return set(self.db.scalars(
+            select(MenuIntakeRow.event_date).where(
+                MenuIntakeRow.user_id == user_id, MenuIntakeRow.event_date.in_(dates),
+            )
+        ))
 
-    def upsert_menu_intake(self, event_date: date, extracted_items: list[dict], source_image_id: str, uploaded_by) -> None:
+    def get_week_menu_items(self, user_id, week_start: date) -> list[ExtractedDish]:
+        """Every date in a confirmed week holds the same one extraction (see
+        routes_menu.confirm_upload) — the first date that has a row is enough."""
+        for offset in range(7):
+            intake = self.get_menu_intake(week_start + timedelta(days=offset), user_id)
+            if intake is not None:
+                return intake.extracted_items
+        return []
+
+    def upsert_menu_intake(self, user_id, event_date: date, extracted_items: list[dict], source_image_id: str) -> None:
         stmt = pg_insert(MenuIntakeRow).values(
-            event_date=event_date, source_image_id=source_image_id,
-            extracted_items=extracted_items, uploaded_by=uploaded_by,
+            user_id=user_id, event_date=event_date, source_image_id=source_image_id,
+            extracted_items=extracted_items, uploaded_by=user_id,
         )
         stmt = stmt.on_conflict_do_update(
-            index_elements=[MenuIntakeRow.event_date],
-            set_={"source_image_id": source_image_id, "extracted_items": extracted_items, "uploaded_by": uploaded_by},
+            index_elements=[MenuIntakeRow.user_id, MenuIntakeRow.event_date],
+            set_={"source_image_id": source_image_id, "extracted_items": extracted_items, "uploaded_by": user_id},
         )
         self.db.execute(stmt)
         self.db.commit()
 
     # --- pending uploads (the upload -> preview -> confirm holding area) -----
 
-    def create_pending_upload(self, user_id, week_start: date, extracted_items: list[dict], sha256: str) -> uuid.UUID:
-        row = PendingMenuUpload(user_id=user_id, week_start=week_start, extracted_items=extracted_items, sha256=sha256)
+    def create_pending_upload(self, user_id, week_start: date, sha256: str) -> uuid.UUID:
+        """Created in "processing" state before Gemini runs — the extraction
+        itself lands later via finish_pending_upload."""
+        row = PendingMenuUpload(user_id=user_id, week_start=week_start, extracted_items=[], sha256=sha256, status="processing")
         self.db.add(row)
         self.db.commit()
         return row.id
+
+    def finish_pending_upload(self, pending_id, extracted_items: list[dict], error: Optional[str] = None) -> None:
+        row = self.db.get(PendingMenuUpload, pending_id)
+        if row is None:
+            return  # the student deleted their account or replaced it meanwhile
+        row.extracted_items = extracted_items
+        row.status = "error" if error else "ready"
+        row.error = error
+        self.db.commit()
 
     def get_pending_upload(self, pending_id) -> Optional[PendingMenuUpload]:
         return self.db.get(PendingMenuUpload, pending_id)
@@ -317,6 +353,14 @@ class Repository:
             )
         ))
 
+    def list_scheduled_meals_for_user(self, user_id, dates: list[date]) -> list[ScheduledMealRow]:
+        return list(self.db.scalars(
+            select(ScheduledMealRow).where(
+                ScheduledMealRow.user_id == user_id,
+                ScheduledMealRow.event_date.in_(dates),
+            ).order_by(ScheduledMealRow.event_date, ScheduledMealRow.scheduled_time)
+        ))
+
     def list_pending_manual_feedback(self, user_id, before_date: date, limit: int = 10) -> list[ScheduledMealRow]:
         """Past, unresolved meals for one user, for the manual "how was it"
         feedback page — a self-serve, immediate complement to the automated
@@ -340,11 +384,13 @@ class Repository:
     # --- account deletion --------------------------------------------------
 
     def delete_user(self, user_id) -> None:
-        """Removes everything personal to this user. menu_intake is shared,
-        weekly-board data, not personal — its uploaded_by attribution is
-        cleared instead of deleting the (still-in-use) shared row. Caller is
-        responsible for revoking the Google grant first (see
-        get_raw_refresh_token) — this only removes our own copy of it."""
+        """Removes everything personal to this user, their own uploaded
+        menus included. Caller is responsible for revoking the Google grant
+        first (see get_raw_refresh_token) — this only removes our own copy
+        of it."""
+        self.db.execute(delete(MenuIntakeRow).where(MenuIntakeRow.user_id == user_id))
+        # Rows copied from the old shared menu by migration 0003 can still
+        # name this user as the original uploader on other students' copies.
         self.db.execute(update(MenuIntakeRow).where(MenuIntakeRow.uploaded_by == user_id).values(uploaded_by=None))
         self.db.execute(delete(ScheduledMealRow).where(ScheduledMealRow.user_id == user_id))
         self.db.execute(delete(PendingMenuUpload).where(PendingMenuUpload.user_id == user_id))

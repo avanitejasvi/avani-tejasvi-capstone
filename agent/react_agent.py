@@ -118,7 +118,7 @@ class GoogleAuthUnavailable(Exception):
 
 
 class NoMenuAvailable(Exception):
-    """Raised by act_menu_intake in live mode when no shared MenuIntake has
+    """Raised by act_menu_intake in live mode when no MenuIntake has
     been uploaded yet for a date — a genuine state to surface, never silently
     papered over with the offline fixture in production."""
 
@@ -183,7 +183,7 @@ class AgentRepository(Protocol):
 
     def save_preferences(self, user_id: str, prefs: "UserPreferences") -> None: ...
 
-    def get_menu_intake(self, event_date: date) -> Optional["MenuIntake"]: ...
+    def get_menu_intake(self, event_date: date, user_id: str) -> Optional["MenuIntake"]: ...
 
 
 class ScoredDish(BaseModel):
@@ -681,9 +681,22 @@ class MenuPreferenceMatchingSkill:
             break
         return prefs
 
+    @staticmethod
+    def _distinct(ranked: list[ScoredDish]) -> list[ScoredDish]:
+        """The board can list one dish under two categories (e.g. "Paneer
+        Kadai" under both Gravy Veg and Gravy Veg - Jain) — it's still one
+        pick, not two of the top three."""
+        seen, distinct = set(), []
+        for s in ranked:
+            key = normalize_dish_name(s.name)
+            if key not in seen:
+                seen.add(key)
+                distinct.append(s)
+        return distinct
+
     def select_top_picks(self, scored: list[ScoredDish], top_n: int = 3) -> list[ScoredDish]:
         eat_items = sorted((s for s in scored if s.decision == "eat"), key=lambda s: s.score, reverse=True)
-        return eat_items[:top_n]
+        return self._distinct(eat_items)[:top_n]
 
     def select_fallback_picks(self, scored: list[ScoredDish], top_n: int = 3) -> list[ScoredDish]:
         """Only meant to be called when select_top_picks found nothing —
@@ -695,7 +708,7 @@ class MenuPreferenceMatchingSkill:
             (s for s in scored if FALLBACK_THRESHOLD < s.score < EAT_THRESHOLD),
             key=lambda s: s.score, reverse=True,
         )
-        return candidates[:top_n]
+        return self._distinct(candidates)[:top_n]
 
     def build_event_description(
         self, scored: list[ScoredDish], top_picks: list[ScoredDish],
@@ -790,12 +803,12 @@ class ReActMealAgent:
 
     def act_menu_intake(self, event_date: date, cached_items: Optional[list[ExtractedDish]] = None) -> MenuIntake:
         if cached_items is not None:
-            # scheduling.py's weekly path: it already loaded the shared, once-a-week
+            # scheduling.py's weekly path: it already loaded this student's weekly
             # upload's extraction for this date and passes it straight in — no per-run
-            # Gemini call, no per-user re-fetch of the same physical menu.
-            intake = MenuIntake(date=event_date, source_image_id="shared-weekly-upload", extracted_items=cached_items)
+            # Gemini call, no per-slot re-fetch of the same physical menu.
+            intake = MenuIntake(date=event_date, source_image_id="weekly-upload", extracted_items=cached_items)
             self._log(
-                "Reusing the shared weekly upload's extraction instead of calling Gemini per run.",
+                "Reusing this week's uploaded extraction instead of calling Gemini per run.",
                 "workflow.cached_menu_intake",
                 {"event_date": str(event_date)},
                 f"Using {len(cached_items)} previously-extracted item(s).",
@@ -803,20 +816,20 @@ class ReActMealAgent:
             return intake
 
         if self.live:
-            intake = self.repo.get_menu_intake(event_date)
+            intake = self.repo.get_menu_intake(event_date, self.user_id)
             if intake is not None:
                 self._log(
-                    "No menu was passed in for this run — check the shared MenuIntake Postgres table directly.",
+                    "No menu was passed in for this run — check this student's MenuIntake rows directly.",
                     "repository.get_menu_intake",
                     {"event_date": str(event_date)},
                     f"Loaded {len(intake.extracted_items)} item(s) uploaded for this date.",
                 )
                 return intake
             self._log(
-                "No menu was passed in for this run — check the shared MenuIntake Postgres table directly.",
+                "No menu was passed in for this run — check this student's MenuIntake rows directly.",
                 "repository.get_menu_intake",
                 {"event_date": str(event_date)},
-                "No shared menu has been uploaded for this date yet.",
+                "This student hasn't uploaded a menu for this date yet.",
             )
             raise NoMenuAvailable(event_date)
 
@@ -1035,7 +1048,7 @@ class FileRepository:
         payload["tag_weights"] = {}
         self.fs.write_json(self._preferences_path(), payload)
 
-    def get_menu_intake(self, event_date: date) -> Optional[MenuIntake]:
+    def get_menu_intake(self, event_date: date, user_id: Optional[str] = None) -> Optional[MenuIntake]:
         path = DATA_DIR / "menu_intake_sample.json"
         if not path.exists():
             return None

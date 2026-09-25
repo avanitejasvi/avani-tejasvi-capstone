@@ -1,0 +1,102 @@
+{% extends "app_base.html" %}
+{% block title %}This week — Forkcast{% endblock %}
+{% block main %}
+<header class="between" style="margin-bottom:4px">
+  <div>
+    {{ ui.logo(22) }}
+    <h1 class="display" style="font-size:18px; line-height:1; margin-top:6px">Hi, {{ first_name }}</h1>
+  </div>
+  <a class="avatar" href="/settings" aria-label="Settings">{{ initial }}</a>
+</header>
+
+{% if needs_reauth %}
+<div class="banner banner-red" role="alert">
+  <p class="banner-msg">{{ ui.error_icon() }}<span>Your Google Calendar access has expired. Reconnect Google to keep getting meals.</span></p>
+  <a class="btn btn-danger btn-sm" href="/auth/login">Reconnect Google</a>
+</div>
+{% endif %}
+
+{% if no_menu %}
+<div class="banner banner-amber">
+  <p class="banner-msg">{{ ui.warn_icon() }}<span>No menu uploaded for this week yet.</span></p>
+  <a class="btn btn-amber btn-sm" href="/menu/upload?flow=menu">Upload menu</a>
+</div>
+{% elif missing_label %}
+<div class="banner banner-amber banner-inline">
+  {{ ui.warn_icon() }}
+  <p class="grow small" style="font-weight:600">Menu missing for {{ missing_label }}.</p>
+  <a class="link-brand small" style="color:#B45309" href="/menu/upload?flow=menu">Upload</a>
+</div>
+{% endif %}
+
+{% if to_rate %}
+<div class="banner banner-amber">
+  <p class="banner-msg">{{ ui.warn_icon() }}<span>{{ to_rate|length }} meal{{ '' if to_rate|length == 1 else 's' }} waiting for your rating — this is how Forkcast learns what you like.</span></p>
+  <button type="button" class="btn btn-amber btn-sm" data-open-dialog="rating-sheet">Rate them</button>
+</div>
+{% endif %}
+
+{% if has_menu or to_rate %}
+<section class="card card-pad">
+  <p class="eyebrow" style="margin-bottom:4px">Weekly check-in</p>
+  <p class="display" style="font-size:15px; line-height:1.35; margin-bottom:12px">Your weekly check-in is ready. Takes about a minute.</p>
+  <a class="btn btn-primary btn-block" href="/checkin">Start check-in</a>
+</section>
+{% endif %}
+
+{% if next_meal %}
+<section class="card" aria-labelledby="next-meal">
+  <div class="card-head between">
+    <div>
+      <p class="eyebrow">Next meal</p>
+      <h2 id="next-meal" class="display" style="font-size:15px; margin-top:2px">{{ next_meal.slot_label }} · {{ next_meal.day_short }}</h2>
+    </div>
+    {% if next_meal.time_label %}<span class="pill">{{ next_meal.time_label }}</span>{% endif %}
+  </div>
+  {% if next_meal.backup %}<div style="padding:10px 16px 0"><span class="pill-mini">No confident picks — closest options</span></div>{% endif %}
+  {{ ui.pick_list(next_meal) }}
+</section>
+{% elif has_menu %}
+<section class="card card-pad">
+  <p class="display" style="font-size:15px">No more meals scheduled this week.</p>
+  <p class="small muted" style="margin-top:4px">Next week's picks arrive once you upload next week's menu.</p>
+</section>
+{% endif %}
+
+{% if rest_meals %}
+<section>
+  <h2 class="section-label" style="margin-bottom:12px">Rest of the week</h2>
+  {% for meal in rest_meals %}
+  <details class="meal-row">
+    <summary>
+      <span class="grow">
+        <span class="small" style="font-weight:600">{{ meal.slot_label }}</span>
+        <span class="small muted" style="margin-left:8px">{{ meal.day_label }}</span>
+      </span>
+      {% if meal.backup %}<span class="pill-mini">Backup</span>{% endif %}
+      {{ ui.chevron() }}
+    </summary>
+    <div class="picks">{{ ui.pick_list(meal) }}</div>
+  </details>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block overlays %}
+{% if to_rate %}
+<div class="sheet-backdrop" id="rating-sheet" role="dialog" aria-modal="true" aria-labelledby="rating-title" data-rating-sheet {% if not open_rating %}hidden{% endif %}>
+  <div class="sheet">
+    <div class="sheet-handle" aria-hidden="true"><span></span></div>
+    <div class="sheet-body">
+      <div class="between">
+        <h2 id="rating-title" class="display" style="font-size:20px">Rate your meals</h2>
+        <button type="button" class="link-btn" data-close-dialog>Close</button>
+      </div>
+      {% include "_rating_cards.html" %}
+      <button type="button" class="btn btn-primary btn-block" data-save-ratings>Save feedback</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

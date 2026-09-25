@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Check your menu — Forkcast{% endblock %}
+{% block body %}
+{% set onboarding = flow == "onboarding" %}
+<main class="screen" data-check data-status="{{ pending.status }}"
+      data-status-url="/menu/upload/{{ pending.id }}/status">
+  {{ ui.blob("#C96A00", 0.07, "width:220px; height:220px; top:-40px; right:-60px") }}
+  {{ ui.blob("#0A6B6B", 0.06, "width:180px; height:180px; bottom:60px; left:-70px") }}
+
+  <div class="screen-body">
+    <div style="margin-bottom:24px">{{ ui.back('/preferences?flow=onboarding&pending=' ~ pending.id if onboarding else '/menu/upload?flow=menu') }}</div>
+    <h1 class="h1" style="margin-bottom:6px">Check your menu</h1>
+    <p class="small muted" style="margin-bottom:20px">{{ week_label }} · Make sure Forkcast read your photo correctly.</p>
+
+    {% if pending.status == "processing" %}
+    <div class="card card-pad row" data-reading>
+      <svg class="spinner" style="width:32px; height:32px; flex-shrink:0" viewBox="0 0 96 96" fill="none" aria-hidden="true"><circle cx="48" cy="48" r="42" stroke="#EDE0CC" stroke-width="9"/><path d="M48 6a42 42 0 0 1 42 42" stroke="#C96A00" stroke-width="9" stroke-linecap="round"/></svg>
+      <div>
+        <p class="small" style="font-weight:600">Still reading your photo…</p>
+        <p class="xs muted">This usually takes 10–30 seconds.</p>
+      </div>
+    </div>
+    {% elif pending.status == "error" %}
+    <div class="stack">
+      <div class="alert alert-danger" role="alert">{{ ui.info_icon() }}<span>We couldn't read this photo. Try again in better light.</span></div>
+      <a class="btn btn-primary btn-block" href="/menu/upload?flow={{ flow }}">Try another photo</a>
+      {# Skipping means no menu yet — go to This week (onboarding) or back to the Menu tab, never on to scheduling. #}
+      <a class="btn btn-ghost btn-block" href="{{ '/' if onboarding else '/menu' }}">Skip for now</a>
+    </div>
+    {% else %}
+    <div>{% include "_menu_days.html" %}</div>
+    {% endif %}
+  </div>
+
+  {% if pending.status == "ready" %}
+  <form class="screen-foot" method="post" action="/menu/upload/confirm" data-confirm-form>
+    <input type="hidden" name="pending_id" value="{{ pending.id }}">
+    <input type="hidden" name="flow" value="{{ flow }}">
+    <button type="submit" class="btn btn-primary btn-block">Confirm menu</button>
+  </form>
+
+  {% endif %}
+</main>
+{% endblock %}

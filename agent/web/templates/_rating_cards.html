@@ -1,0 +1,15 @@
+{# One card per past meal waiting for feedback. Posted per meal to
+   /feedback/<id> (response yes/maybe/no + optional note) by forkcast.js. #}
+{% for meal in to_rate %}
+<div class="card card-pad" data-rate-card data-meal-id="{{ meal.id }}">
+  <p class="display" style="font-size:15px; margin-bottom:2px">{{ meal.slot_label }} · {{ meal.day_label }}</p>
+  <p class="xs muted" style="margin-bottom:12px">{{ meal.picks|map(attribute="name")|join(", ") }}</p>
+  <div class="chips" style="margin-bottom:12px" role="radiogroup" aria-label="How was {{ meal.slot_label }} on {{ meal.day_label }}?">
+    {% for value, label in [("yes", "Ate it, liked it"), ("maybe", "Ate it, unsure"), ("no", "Skipped it")] %}
+    <label class="chip chip-sm"><input type="radio" name="rate-{{ meal.id }}" value="{{ value }}">{{ label }}</label>
+    {% endfor %}
+  </div>
+  <button type="button" class="link-btn xs" style="font-weight:600" data-add-note>+ Add a comment</button>
+  <input class="input" type="text" placeholder="What did you think?" aria-label="Comment" data-note hidden>
+</div>
+{% endfor %}

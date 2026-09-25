@@ -1,0 +1,18 @@
+{# Read-only collapsible days — Check your menu and the Menu tab. #}
+{% import "_ui.html" as ui %}
+{% for day in days %}
+<details class="day" {% if loop.first %}open{% endif %}>
+  <summary>
+    <span><span class="day-title">{{ day.label }}</span><span class="day-count">· {{ day.count }} dish{{ '' if day.count == 1 else 'es' }}</span></span>
+    {{ ui.chevron() }}
+  </summary>
+  <div class="day-body">
+    {% for slot in day.slots %}
+    <div class="slot-head">{{ slot.label }}</div>
+    {% for dish in slot.dishes %}
+    <div class="card-row"><span class="dish">{{ dish.name }}</span>{{ ui.tag(dish.mess) }}</div>
+    {% endfor %}
+    {% endfor %}
+  </div>
+</details>
+{% endfor %}

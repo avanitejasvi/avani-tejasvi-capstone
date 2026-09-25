@@ -23,4 +23,7 @@
 builder = "DOCKERFILE"
 
 [deploy]
+# Applies any pending Alembic migration (e.g. 0003 per-student menus) before
+# the new version starts serving; a no-op when already at head.
+preDeployCommand = "alembic upgrade head"
 restartPolicyType = "ON_FAILURE"

@@ -20,7 +20,6 @@ from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from agent.db import get_db
@@ -29,9 +28,10 @@ from agent.react_agent import ExtractedDish, MenuPreferenceMatchingSkill, derive
 from agent.repository import Repository
 from agent.timezone import today_ist, week_start_ist
 from agent.web.deps import get_current_user
+from agent.web.templating import flash, templates
+from agent.web.views import meals_to_rate
 
 router = APIRouter(prefix="/checkin", tags=["checkin"])
-templates = Jinja2Templates(directory="agent/web/templates")
 
 matcher = MenuPreferenceMatchingSkill()
 
@@ -44,15 +44,9 @@ RECENT_DAYS = 14
 CHECKIN_COOLDOWN_DAYS = 14
 
 
-def _this_weeks_items(repo: Repository) -> list[ExtractedDish]:
-    """Every date in the current week holds the same one extraction (see
-    weekly_run.py) — the first date that actually has a row is enough."""
-    week_start = week_start_ist()
-    for offset in range(7):
-        intake = repo.get_menu_intake(week_start + timedelta(days=offset))
-        if intake is not None:
-            return intake.extracted_items
-    return []
+def _this_weeks_items(repo: Repository, user_id) -> list[ExtractedDish]:
+    """This student's own uploaded menu for the current week."""
+    return repo.get_week_menu_items(user_id, week_start_ist())
 
 
 def _pick_candidates(items, prefs, today):
@@ -101,7 +95,7 @@ def _recently_repeated(prefs, today):
 def checkin_form(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     repo = Repository(db)
     prefs = repo.load_preferences(user.id)
-    items = _this_weeks_items(repo)
+    items = _this_weeks_items(repo, user.id)
     today = today_ist()
     candidates, scored = _pick_candidates(items, prefs, today)
 
@@ -125,6 +119,8 @@ def checkin_form(request: Request, user: User = Depends(get_current_user), db: S
         "has_menu": bool(items),
         "candidates": candidates,
         "repeats": _recently_repeated(prefs, today_ist()),
+        # Unrated past meals come first, rated in place via /feedback/<id>.
+        "to_rate": meals_to_rate(repo, user.id, today),
     })
 
 
@@ -146,4 +142,5 @@ async def submit_checkin(request: Request, user: User = Depends(get_current_user
         prefs = matcher.apply_feedback(prefs, name, "maybe", "having this too often this week", "negative", today)
 
     repo.save_preferences(user.id, prefs)
+    flash(request, "Check-in saved")
     return RedirectResponse("/", status_code=302)

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}How Forkcast works{% endblock %}
+{% block body %}
+{% set steps = [
+  ("01", "Tell us what you like", "Answer a few quick questions. Skip anything you're unsure about.", "bowl"),
+  ("02", "Upload the menu", "Snap a photo of this week's menu board.", "camera"),
+  ("03", "Get your top 3 picks", "For every meal, your best three dishes land in Google Calendar.", "calendar"),
+  ("04", "Tap to give feedback", "After meals, tell us how it went. The first few weeks teach Forkcast the most.", "heart"),
+] %}
+<main class="screen">
+  <div style="display:flex; justify-content:flex-end; margin-bottom:24px">
+    <a class="link-btn" href="/menu/upload?flow=onboarding">Skip</a>
+  </div>
+
+  <div class="tilted" style="margin-bottom:40px">
+    <h1 class="sr-only">How does it work?</h1>
+    <p aria-hidden="true">How does</p>
+    <p aria-hidden="true" style="padding-left:clamp(24px, 5vw, 48px)">it work?</p>
+  </div>
+
+  <ol class="how-steps screen-body" style="list-style:none; margin:0; padding:0">
+    {% for num, title, body, art in steps %}
+    <li class="how-step">
+      <div style="flex-shrink:0">{{ ui.illust(art) }}</div>
+      <div>
+        <p class="how-num">{{ num }}</p>
+        <p class="how-title">{{ title }}</p>
+        <p class="how-body">{{ body }}</p>
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+
+  <div class="screen-foot" style="padding-top:40px">
+    <p class="display" style="font-size:14px; font-style:italic; font-weight:400; color:var(--muted); text-align:center">"Less deciding. More eating what you enjoy."</p>
+    <a class="btn btn-primary btn-block" href="/menu/upload?flow=onboarding">Get started</a>
+  </div>
+</main>
+{% endblock %}

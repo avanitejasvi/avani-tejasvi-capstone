@@ -1,29 +1,30 @@
-"""The preference summary/profile page: a queue of past meals still waiting
-for feedback (the original, self-serve "how was it" channel — a complement
-to the automated weekly collect_feedback.py Calendar-RSVP pass, not the
-only one), plus a concise, editable summary of what the system currently
-understands — likes/avoids/still-learning, grouped by each dish's
-confidence tier (react_agent.KnownDish.confidence). There's no separate
-"rate past meals" tab: both live here, since a confirmed rating and this
-page's summary are the same underlying data.
+"""Rating past meals (the self-serve "how was it" channel — a complement to
+the automated weekly collect_feedback.py Calendar-RSVP pass, not the only
+one) and the My tastes tab: the baseline answers plus an editable summary of
+what the system currently understands — likes/avoids/still-learning, grouped
+by each dish's confidence tier (react_agent.KnownDish.confidence).
+
+Past meals are rated from This week's rating sheet and the weekly check-in,
+both of which post here without leaving the page.
 """
 import uuid
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from agent.db import get_db
 from agent.feedback_sentiment import classify_sentiment
 from agent.models_db import User
+from agent.preference_questions import answer_summary
 from agent.react_agent import EAT_THRESHOLD, MenuPreferenceMatchingSkill
 from agent.repository import Repository
-from agent.timezone import today_ist
+from agent.timezone import today_ist, week_start_ist
 from agent.web.deps import get_current_user
+from agent.web.templating import flash, shell_context, templates
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
-templates = Jinja2Templates(directory="agent/web/templates")
+tastes_router = APIRouter(tags=["tastes"])
 
 # What the profile-edit dropdown's real choices mean in terms of the same
 # yes/no/maybe scale every other real feedback channel already uses. Neutral
@@ -52,13 +53,25 @@ def _preference_summary(prefs):
     return {"likes": likes, "avoids": avoids, "learning": learning, "unknown_count": unknown_count}
 
 
-@router.get("", response_class=HTMLResponse)
-def feedback_list(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def _wants_json(request: Request) -> bool:
+    return "application/json" in request.headers.get("accept", "")
+
+
+@router.get("")
+def feedback_list():
+    """Old links (and Calendar reminders) point here — past meals are rated
+    from This week's rating sheet now."""
+    return RedirectResponse("/?rate=1", status_code=302)
+
+
+@tastes_router.get("/tastes", response_class=HTMLResponse)
+def my_tastes(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     repo = Repository(db)
-    rows = [r for r in repo.list_pending_manual_feedback(user.id, today_ist()) if r.top_picks]
     prefs = repo.load_preferences(user.id)
-    return templates.TemplateResponse(request, "feedback.html", {
-        "rows": rows, "prefs": prefs, "summary": _preference_summary(prefs),
+    return templates.TemplateResponse(request, "tastes.html", {
+        **shell_context(user, "tastes", week_start_ist()),
+        "answers": answer_summary(repo.load_intake_answers(user.id), prefs),
+        "summary": _preference_summary(prefs),
     })
 
 
@@ -89,7 +102,8 @@ async def edit_preference(request: Request, user: User = Depends(get_current_use
             changed = True
         if changed:
             repo.save_preferences(user.id, prefs)
-    return RedirectResponse("/feedback", status_code=302)
+            flash(request, "Changes saved")
+    return RedirectResponse("/tastes", status_code=302)
 
 
 @router.post("/{meal_id}")
@@ -97,7 +111,7 @@ async def submit_feedback(meal_id: str, request: Request, user: User = Depends(g
     try:
         meal_uuid = uuid.UUID(meal_id)
     except ValueError:
-        return RedirectResponse("/feedback", status_code=302)
+        return JSONResponse({"ok": False}, status_code=404) if _wants_json(request) else RedirectResponse("/", status_code=302)
 
     form = await request.form()
     response = form.get("response")
@@ -106,7 +120,7 @@ async def submit_feedback(meal_id: str, request: Request, user: User = Depends(g
     repo = Repository(db)
     row = repo.get_scheduled_meal(meal_uuid)
     if row is None or row.user_id != user.id:
-        return RedirectResponse("/feedback", status_code=302)
+        return JSONResponse({"ok": False}, status_code=404) if _wants_json(request) else RedirectResponse("/", status_code=302)
 
     if response in {"yes", "no", "maybe"}:
         matcher = MenuPreferenceMatchingSkill()
@@ -117,4 +131,7 @@ async def submit_feedback(meal_id: str, request: Request, user: User = Depends(g
         repo.save_preferences(user.id, prefs)
 
     repo.mark_feedback_applied(row.id)
-    return RedirectResponse("/feedback", status_code=302)
+    if _wants_json(request):
+        return {"ok": True}
+    flash(request, "Feedback saved")
+    return RedirectResponse("/", status_code=302)

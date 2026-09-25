@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Forkcast — know what's good before you go{% endblock %}
+{% block body %}
+<main class="screen">
+  <div style="position:absolute; top:24px; right:16px" aria-hidden="true">{{ ui.circular_badge(110) }}</div>
+
+  <div class="screen-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding-top:32px">
+    <h1>{{ ui.logo(52) }}</h1>
+
+    <div class="row" style="justify-content:center; margin:8px 0" role="img" aria-label="A thali with a fork and knife">
+      {{ ui.fork() }}
+      <div class="hero-plate"><img src="/static/img/thali.jpg" alt="A traditional Indian vegetarian thali — dal, rice, roti and sabzi"></div>
+      {{ ui.knife() }}
+    </div>
+
+    <div style="text-align:center; max-width:300px">
+      <h2 class="display" style="font-size:22px; line-height:1.35">
+        Know what's <span class="circled">good{{ ui.wobbly_ellipse() }}</span> before you go.
+      </h2>
+      <p class="lede" style="margin-top:12px; line-height:1.65">
+        Forkcast reads the Rasoi and Aahar menus, learns what you like, and puts your top picks in Google Calendar.
+      </p>
+    </div>
+  </div>
+
+  <div class="screen-foot">
+    {% if error %}
+    <div class="alert alert-danger" role="alert">{{ ui.info_icon() }}<span>{{ error }}</span></div>
+    {% endif %}
+    <a class="btn btn-google btn-block" href="/auth/login">{{ ui.google_icon() }} Sign in with Google</a>
+    <p class="xs" style="text-align:center; color:rgba(120,113,108,.7)">Your data stays private. No ads, ever.</p>
+  </div>
+</main>
+{% endblock %}

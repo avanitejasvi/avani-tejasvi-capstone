@@ -1,0 +1,69 @@
+{% extends "app_base.html" %}
+{% block title %}My tastes — Forkcast{% endblock %}
+
+{# Like / Neutral / Avoid (plus "Not yet" for still-learning dishes). Posts
+   to the existing /feedback/edit batch handler, which only applies rows
+   whose choice differs from where they started. #}
+{% macro learned_row(dish, current, idx) -%}
+{%- set score_class = "score-hi" if dish.rating >= 4 else ("score-lo" if dish.rating < 2 else "") -%}
+<div class="learned-row" {% if idx >= 8 %}data-extra hidden{% endif %}>
+  <div class="learned-top">
+    <span class="learned-name">{{ dish.name }}</span>
+    <span class="score {{ score_class }}" title="Rating out of 5">{{ "%.1f"|format(dish.rating) }}</span>
+  </div>
+  <input type="hidden" name="dish_name" value="{{ dish.name }}">
+  <input type="hidden" name="current" value="{{ current }}">
+  <div class="seg" role="radiogroup" aria-label="{{ dish.name }}">
+    {% if current == "unrated" %}
+    <label class="seg-unrated"><input type="radio" name="choice-{{ current }}-{{ idx }}" value="unrated" checked data-choice>Not yet</label>
+    {% endif %}
+    <label class="seg-like"><input type="radio" name="choice-{{ current }}-{{ idx }}" value="like" {% if current == 'like' %}checked{% endif %} data-choice>Like</label>
+    <label class="seg-neutral"><input type="radio" name="choice-{{ current }}-{{ idx }}" value="neutral" data-choice>Neutral</label>
+    <label class="seg-avoid"><input type="radio" name="choice-{{ current }}-{{ idx }}" value="avoid" {% if current == 'avoid' %}checked{% endif %} data-choice>Avoid</label>
+  </div>
+  <input type="hidden" name="choice" value="{{ current }}" data-choice-out>
+</div>
+{%- endmacro %}
+
+{% macro learned_group(title, color, dishes, current) -%}
+<div data-group>
+  <p class="group-label" style="color:{{ color }}">{{ title }} ({{ dishes|length }})</p>
+  <div class="card">
+    {% for dish in dishes %}{{ learned_row(dish, current, loop.index0) }}{% else %}<p class="empty-note">None confirmed yet.</p>{% endfor %}
+  </div>
+  {% if dishes|length > 8 %}
+  <button type="button" class="link-brand xs" style="margin:8px 4px 0" data-show-all>Show all {{ dishes|length }}</button>
+  {% endif %}
+</div>
+{%- endmacro %}
+
+{% block main %}
+<header class="between" style="margin-bottom:4px">
+  <h1 class="h1-tab">My tastes</h1>
+  <a class="link-brand" style="font-size:14px" href="/preferences?flow=tastes">Update</a>
+</header>
+
+<div class="stack-lg">
+  {% for cat_label, rows in answers %}
+  <section>
+    <h2 class="section-label" style="margin-bottom:8px">{{ cat_label }}</h2>
+    <div class="card">
+      {% for label, value in rows %}
+      <div class="kv"><span class="kv-k">{{ label }}</span><span class="kv-v {% if not value %}is-empty{% endif %}">{{ value or "—" }}</span></div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+
+<form method="post" action="/feedback/edit" data-tastes-form style="margin-top:28px">
+  <h2 class="section-label" style="margin-bottom:12px">What Forkcast has learned</h2>
+  <div class="stack">
+    {{ learned_group("Likes", "#34A853", summary.likes, "like") }}
+    {{ learned_group("Avoids", "#EF4444", summary.avoids, "avoid") }}
+    {{ learned_group("Still learning", "#C96A00", summary.learning, "unrated") }}
+  </div>
+  <p class="xs muted" style="margin:8px 4px 16px; line-height:1.6">Guesses from similar dishes — settle a few now or wait for the weekly check-in.</p>
+  <button type="submit" class="btn btn-primary btn-block" data-tastes-save disabled>Save changes</button>
+</form>
+{% endblock %}

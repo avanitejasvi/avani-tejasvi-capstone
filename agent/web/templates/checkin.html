@@ -1,66 +1,106 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Weekly check-in — meal-match-agent</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 40px auto; padding: 0 16px; color: #222; }
-    label { display: block; margin: 16px 0 4px; font-weight: 600; }
-    select { width: 100%; padding: 8px; box-sizing: border-box; }
-    .slot { display: block; margin: 4px 0; font-weight: normal; }
-    button { margin-top: 20px; padding: 8px 16px; }
-    .muted { font-weight: normal; color: #555; margin: 0 0 20px; }
-    .question { border-top: 1px solid #eee; padding-top: 16px; margin-top: 16px; }
-  </style>
-</head>
-<body>
-  <nav><a href="/">&larr; Home</a> · <a href="/preferences">Baseline profile</a></nav>
-  <h1>Weekly check-in</h1>
-  <p class="muted">A quick take on what's actually on the board this week. These answers count as real
-     experience — same as rating a past meal — not a change to your baseline profile.</p>
+{% extends "base.html" %}
+{% import "_ui.html" as ui %}
+{% block title %}Weekly check-in — Forkcast{% endblock %}
 
-  {% if not has_menu %}
-  <p>No menu has been uploaded for this week yet. <a href="/menu/upload">Upload it</a> first, then come back.</p>
-  {% elif not candidates %}
-  <p>Nothing on this week's board is uncertain enough right now to need a check-in — your baseline profile already
-     covers it. Check back once new dishes show up.</p>
+{% macro dish_chips(input_type, name) -%}
+<div class="chips">
+  {% for item in candidates %}
+  <label class="chip"><input type="{{ input_type }}" name="{{ name }}" value="{{ item.name }}"><span>{{ item.name }}</span>{{ ui.tag(item.mess) }}</label>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% block body %}
+{% set has_steps = to_rate or candidates or repeats %}
+<div class="fullscreen">
+  <div class="fullscreen-head">
+    <div class="row">
+      {{ ui.back_button("Back", 'data-checkin-back') }}
+      <div class="grow">{% if has_steps %}<div class="progress"><span data-step-bar style="width:0"></span></div>{% endif %}</div>
+      <a class="link-btn" href="/">Close</a>
+    </div>
+    {% if has_steps %}<p class="xs muted" style="margin-top:12px" data-step-count aria-live="polite"></p>{% else %}<p class="small muted" style="margin-top:12px">Weekly check-in</p>{% endif %}
+  </div>
+
+  {% if not has_steps %}
+  <div class="fullscreen-body" style="display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:20px">
+    <div style="width:56px; height:56px; border-radius:999px; background:rgba(120,113,108,.10); display:flex; align-items:center; justify-content:center" aria-hidden="true">
+      {% if not has_menu %}
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 10h16M4 14h10" stroke="#78716C" stroke-width="1.5" stroke-linecap="round"/></svg>
+      {% else %}
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12l5 5 9-9" stroke="#78716C" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      {% endif %}
+    </div>
+    {% if not has_menu %}
+    <p class="display" style="font-size:16px; max-width:280px">Upload this week's menu first, then come back.</p>
+    <a class="btn btn-primary" href="/menu/upload?flow=menu">Upload menu</a>
+    {% else %}
+    <p class="display" style="font-size:16px; max-width:260px; line-height:1.35">Nothing uncertain this week — your profile already covers it.</p>
+    <a class="btn btn-secondary" href="/">Back to this week</a>
+    {% endif %}
+  </div>
   {% else %}
-  <form method="post" action="/checkin">
-    <div class="question">
-      <label>Which of these would you be most likely to choose this week?</label>
-      {% for item in candidates %}
-      <label class="slot"><input type="checkbox" name="would_choose" value="{{ item.name }}"> {{ item.name }} <span class="muted">({{ item.mess }})</span></label>
-      {% endfor %}
-    </div>
-
-    <div class="question">
-      <label>Anything here you'd actively skip?</label>
-      {% for item in candidates %}
-      <label class="slot"><input type="checkbox" name="would_skip" value="{{ item.name }}"> {{ item.name }}</label>
-      {% endfor %}
-    </div>
-
-    <div class="question">
-      <label>If you had to pick just one over the others, which?</label>
-      <select name="pick_favorite">
-        <option value="">No strong pick</option>
-        {% for item in candidates %}
-        <option value="{{ item.name }}">{{ item.name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-
-    {% if repeats %}
-    <div class="question">
-      <label>Anything you've had too often recently?</label>
-      {% for dish in repeats %}
-      <label class="slot"><input type="checkbox" name="too_often" value="{{ dish.name }}"> {{ dish.name }} <span class="muted">(eaten {{ dish.times_eaten }}x recently)</span></label>
-      {% endfor %}
-    </div>
+  <form class="fullscreen-body" method="post" action="/checkin" data-checkin>
+    {% if to_rate %}
+    <section data-step data-kind="ratings">
+      <div>
+        <h1 class="h2">How were your recent meals?</h1>
+        <p class="small muted" style="margin-top:6px">Skip any you didn't eat.</p>
+      </div>
+      <div class="stack" style="margin-top:16px">{% include "_rating_cards.html" %}</div>
+      <button type="button" class="btn btn-primary btn-block" style="margin-top:16px" data-save-ratings data-then-next>Skip</button>
+    </section>
     {% endif %}
 
-    <button type="submit">Submit check-in</button>
+    {% if candidates %}
+    <section data-step data-kind="multi" hidden>
+      <h1 class="h2">Which of these would you be most likely to choose this week?</h1>
+      <p class="small muted" style="margin:6px 0 20px">Select all that apply.</p>
+      {{ dish_chips("checkbox", "would_choose") }}
+      <button type="button" class="btn btn-primary btn-block" style="margin-top:20px" data-next>Skip</button>
+    </section>
+
+    <section data-step data-kind="multi" hidden>
+      <h1 class="h2">Anything here you'd actively skip?</h1>
+      <p class="small muted" style="margin:6px 0 20px">Select any you'd avoid.</p>
+      {{ dish_chips("checkbox", "would_skip") }}
+      <button type="button" class="btn btn-primary btn-block" style="margin-top:20px" data-next>Skip</button>
+    </section>
+
+    <section data-step data-kind="single" hidden>
+      <h1 class="h2">If you had to pick just one, which?</h1>
+      <p class="small muted" style="margin:6px 0 20px">Pick one.</p>
+      {{ dish_chips("radio", "pick_favorite") }}
+      <button type="button" class="btn btn-ghost btn-block" style="margin-top:20px" data-next>Skip</button>
+    </section>
+    {% endif %}
+
+    {% if repeats %}
+    <section data-step data-kind="multi" hidden>
+      <h1 class="h2">Anything you've had too often recently?</h1>
+      <p class="small muted" style="margin:6px 0 20px">Forkcast will deprioritise these for a while.</p>
+      <div class="chips">
+        {% for dish in repeats %}
+        <label class="chip chip-stacked"><input type="checkbox" name="too_often" value="{{ dish.name }}"><span>{{ dish.name }}</span><span class="chip-note">eaten {{ dish.times_eaten }}× recently</span></label>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn btn-primary btn-block" style="margin-top:20px" data-next data-final>Skip</button>
+    </section>
+    {% endif %}
+
+    <section data-step data-kind="done" hidden>
+      <div style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:24px; padding-top:64px">
+        <div style="width:64px; height:64px; border-radius:999px; background:rgba(201,106,0,.10); display:flex; align-items:center; justify-content:center" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 30 30" fill="none"><path d="M5 16L12 23L25 8" stroke="#C96A00" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>
+          <h1 class="display" style="font-size:24px">You're all caught up</h1>
+          <p class="small muted" style="margin-top:8px; max-width:260px; line-height:1.6">Forkcast is learning your taste. See you next week.</p>
+        </div>
+        <button type="submit" class="btn btn-primary">Done</button>
+      </div>
+    </section>
   </form>
   {% endif %}
-</body>
-</html>
+</div>
+{% endblock %}
