@@ -16,7 +16,9 @@
 </div>
 {% endif %}
 
-{% if no_menu %}
+{% if no_menu and next_week_ready %}
+<div class="alert alert-info">{{ ui.info_icon("#0A6B6B") }}<span>Next week's menu is ready — your picks start Mon {{ next_week_ready }}. <a class="link-teal" href="/menu/upload?flow=menu">Add this week's too</a></span></div>
+{% elif no_menu %}
 <div class="banner banner-amber">
   <p class="banner-msg">{{ ui.warn_icon() }}<span>No menu uploaded for this week yet.</span></p>
   <a class="btn btn-amber btn-sm" href="/menu/upload?flow=menu">Upload menu</a>

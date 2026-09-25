@@ -56,6 +56,8 @@ def this_week(request: Request, user: User = Depends(get_current_user), db: Sess
     week_dates = [week_start + timedelta(days=i) for i in range(7)]
     present_dates = repo.weeks_menu_dates_present(week_dates, user.id)
     missing = sorted(d for d in week_dates if d not in present_dates and d >= today_ist())
+    next_monday = week_start + timedelta(days=7)
+    next_week_ready = bool(repo.weeks_menu_dates_present([next_monday + timedelta(days=i) for i in range(7)], user.id))
     meals = week_meals(repo, user.id, week_start)
     upcoming = [m for m in meals if not m["past"]]
 
@@ -65,6 +67,8 @@ def this_week(request: Request, user: User = Depends(get_current_user), db: Sess
         # reminder Calendar event itself failed to be created.
         "needs_reauth": not repo.has_valid_token(user.id),
         "no_menu": not present_dates,
+        # Uploaded for next week only: say so instead of "no menu".
+        "next_week_ready": f"{next_monday.day} {next_monday.strftime('%b')}" if next_week_ready else "",
         "missing_label": missing_days_label(missing) if present_dates else "",
         "to_rate": meals_to_rate(repo, user.id, today_ist()),
         "open_rating": request.query_params.get("rate") == "1",

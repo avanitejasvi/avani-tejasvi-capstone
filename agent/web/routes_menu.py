@@ -46,7 +46,7 @@ def _week_options(repo: Repository, user_id) -> list[dict]:
         dates = [monday + timedelta(days=d) for d in range(7)]
         options.append({
             "value": monday.isoformat(),
-            "label": week_label(monday),
+            "label": ["This week", "Next week"][i] + f" · {monday.day} {monday.strftime('%b')}" if i < 2 else week_label(monday),
             "uploaded": bool(repo.weeks_menu_dates_present(dates, user_id)),
         })
     return options
