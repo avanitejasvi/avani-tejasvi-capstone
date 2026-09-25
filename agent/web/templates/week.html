@@ -38,7 +38,7 @@
 </div>
 {% endif %}
 
-{% if has_menu or to_rate %}
+{% if checkin_ready %}
 <section class="card card-pad">
   <p class="eyebrow" style="margin-bottom:4px">Weekly check-in</p>
   <p class="display" style="font-size:15px; line-height:1.35; margin-bottom:12px">Your weekly check-in is ready. Takes about a minute.</p>
@@ -58,17 +58,17 @@
   {% if next_meal.backup %}<div style="padding:10px 16px 0"><span class="pill-mini">No confident picks — closest options</span></div>{% endif %}
   {{ ui.pick_list(next_meal) }}
 </section>
-{% elif has_menu %}
+{% elif has_menu and not next_week_meals %}
 <section class="card card-pad">
   <p class="display" style="font-size:15px">No more meals scheduled this week.</p>
   <p class="small muted" style="margin-top:4px">Next week's picks arrive once you upload next week's menu.</p>
 </section>
 {% endif %}
 
-{% if rest_meals %}
+{% for heading, list in [("Rest of the week", rest_meals), ("Coming up next week", next_week_meals)] if list %}
 <section>
-  <h2 class="section-label" style="margin-bottom:12px">Rest of the week</h2>
-  {% for meal in rest_meals %}
+  <h2 class="section-label" style="margin-bottom:12px">{{ heading }}</h2>
+  {% for meal in list %}
   <details class="meal-row">
     <summary>
       <span class="grow">
@@ -82,7 +82,7 @@
   </details>
   {% endfor %}
 </section>
-{% endif %}
+{% endfor %}
 {% endblock %}
 
 {% block overlays %}

@@ -1,14 +1,20 @@
 {% extends "app_base.html" %}
 {% block title %}Your menu this week — Forkcast{% endblock %}
 {% block main %}
+{% set which = "next week" if showing_next else "this week" %}
 <header>
-  <h1 class="h1-tab" style="margin-bottom:4px">Your menu this week</h1>
+  <h1 class="h1-tab" style="margin-bottom:4px">Your menu {{ which }}</h1>
   <p class="xs muted">{{ week_label }}</p>
 </header>
 
-<a class="dropzone" style="flex-direction:row; justify-content:center; padding:14px 16px; text-decoration:none" href="/menu/upload?flow=menu">
+<nav class="cat-chips" style="margin:0; max-width:260px" aria-label="Which week">
+  <a class="cat-chip {% if not showing_next %}is-current{% endif %}" style="text-decoration:none; font-size:13px; padding:6px" href="/menu">This week</a>
+  <a class="cat-chip {% if showing_next %}is-current{% endif %}" style="text-decoration:none; font-size:13px; padding:6px" href="/menu?week=next">Next week</a>
+</nav>
+
+<a class="dropzone" style="flex-direction:row; justify-content:center; padding:14px 16px; text-decoration:none" href="{{ upload_url }}">
   {{ ui.upload_icon(16, "#C96A00") }}
-  <span class="dropzone-title">{{ "Upload / replace this week's menu" if days else "Upload menu" }}</span>
+  <span class="dropzone-title">{{ ("Upload / replace " ~ which ~ "'s menu") if days else "Upload menu" }}</span>
 </a>
 
 {% if days %}
@@ -19,10 +25,10 @@
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 10h16M4 14h10" stroke="#78716C" stroke-width="1.5" stroke-linecap="round"/></svg>
   </div>
   <div>
-    <p class="display" style="font-size:16px; margin-bottom:4px">No menu for this week yet</p>
-    <p class="small muted">Upload a photo of this week's mess menu to get started.</p>
+    <p class="display" style="font-size:16px; margin-bottom:4px">No menu for {{ which }} yet</p>
+    <p class="small muted">Upload a photo of {{ which }}'s mess menu to get started.</p>
   </div>
-  <a class="btn btn-primary" href="/menu/upload?flow=menu">Upload menu</a>
+  <a class="btn btn-primary" href="{{ upload_url }}">Upload menu</a>
 </div>
 {% endif %}
 {% endblock %}

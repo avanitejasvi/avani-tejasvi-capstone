@@ -15,6 +15,7 @@ from agent.web import auth as auth_routes
 from agent.web import routes_checkin, routes_feedback, routes_menu, routes_onboarding, routes_preferences, routes_settings
 from agent.web.deps import NotAuthenticated, get_current_user
 from agent.web.templating import shell_context, templates
+from agent.web.routes_checkin import _pick_candidates, _recently_repeated
 from agent.web.views import meals_to_rate, missing_days_label, week_label, week_meals
 
 app = FastAPI(title="meal-match-agent")
@@ -60,6 +61,13 @@ def this_week(request: Request, user: User = Depends(get_current_user), db: Sess
     next_week_ready = bool(repo.weeks_menu_dates_present([next_monday + timedelta(days=i) for i in range(7)], user.id))
     meals = week_meals(repo, user.id, week_start)
     upcoming = [m for m in meals if not m["past"]]
+    next_week = week_meals(repo, user.id, next_monday) if next_week_ready else []
+    to_rate = meals_to_rate(repo, user.id, today_ist())
+    # Same candidate logic as the check-in page itself (read-only here), so
+    # the card only appears when the check-in actually has questions.
+    prefs = repo.load_preferences(user.id)
+    candidates, _ = _pick_candidates(repo.get_week_menu_items(user.id, week_start), prefs, today_ist())
+    checkin_ready = bool(to_rate or candidates or _recently_repeated(prefs, today_ist()))
 
     return templates.TemplateResponse(request, "week.html", {
         **shell_context(user, "week", week_start),
@@ -70,10 +78,12 @@ def this_week(request: Request, user: User = Depends(get_current_user), db: Sess
         # Uploaded for next week only: say so instead of "no menu".
         "next_week_ready": f"{next_monday.day} {next_monday.strftime('%b')}" if next_week_ready else "",
         "missing_label": missing_days_label(missing) if present_dates else "",
-        "to_rate": meals_to_rate(repo, user.id, today_ist()),
+        "to_rate": to_rate,
+        "checkin_ready": checkin_ready,
         "open_rating": request.query_params.get("rate") == "1",
         "has_menu": bool(present_dates),
-        "next_meal": upcoming[0] if upcoming else None,
+        "next_meal": (upcoming or next_week or [None])[0],
         "rest_meals": upcoming[1:],
+        "next_week_meals": next_week if upcoming else next_week[1:],
         "week_label": week_label(week_start),
     })

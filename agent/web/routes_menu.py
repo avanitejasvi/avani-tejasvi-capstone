@@ -24,7 +24,7 @@ from agent.repository import Repository
 from agent.timezone import week_start_ist
 from agent.web.deps import get_current_user
 from agent.web.templating import flash, shell_context, templates
-from agent.web.views import group_menu, week_label
+from agent.web.views import group_menu, is_real_dish, week_label
 
 router = APIRouter(prefix="/menu", tags=["menu"])
 logger = logging.getLogger("agent.web.routes_menu")
@@ -73,6 +73,7 @@ def _extract_in_background(pending_id, image_bytes: bytes, content_type: str) ->
             logger.exception("menu extraction failed for pending upload %s", pending_id)
             repo.finish_pending_upload(pending_id, [], error="unreadable")
             return
+        items = [item for item in items if is_real_dish(item.name)]
         if not items:
             repo.finish_pending_upload(pending_id, [], error="no_dishes")
             return
@@ -86,12 +87,16 @@ def _extract_in_background(pending_id, image_bytes: bytes, content_type: str) ->
 @router.get("", response_class=HTMLResponse)
 def menu_tab(request: Request, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     repo = Repository(db)
-    week_start = week_start_ist()
+    this_week = week_start_ist()
+    showing_next = request.query_params.get("week") == "next"
+    week_start = this_week + timedelta(days=7) if showing_next else this_week
     days = group_menu(repo.get_week_menu_items(user.id, week_start), week_start)
     return templates.TemplateResponse(request, "menu.html", {
-        **shell_context(user, "menu", week_start),
+        **shell_context(user, "menu", this_week),
         "days": days,
+        "showing_next": showing_next,
         "week_label": week_label(week_start),
+        "upload_url": f"/menu/upload?flow=menu&week={week_start.isoformat()}",
     })
 
 

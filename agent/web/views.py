@@ -14,6 +14,14 @@ SLOT_LABELS = {
     "breakfast": "Breakfast", "lunch": "Lunch", "evening_snacks": "Evening snacks",
     "dinner": "Dinner", "sunday_brunch": "Sunday brunch",
 }
+# Placeholders Gemini sometimes reads off an empty board cell.
+JUNK_NAMES = {"", "n/a", "na", "-", "--", "—", "none", "nil", "tbd", "tba"}
+
+
+def is_real_dish(name: str) -> bool:
+    return normalize_dish_name(name or "").strip(" .") not in JUNK_NAMES
+
+
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
 
@@ -62,6 +70,8 @@ def group_menu(items, week_start: date) -> list[dict]:
         for slot in SLOT_ORDER + sorted({i.meal_slot for i in items} - set(SLOT_ORDER)):
             dishes: dict = {}
             for item in _items_for(items, weekday, slot):
+                if not is_real_dish(item.name):
+                    continue
                 key = normalize_dish_name(item.name)
                 if key in dishes:
                     dishes[key]["mess"] = _merge_mess(dishes[key]["mess"], item.mess)
@@ -77,8 +87,12 @@ def group_menu(items, week_start: date) -> list[dict]:
     return days
 
 
-def _mess_lookup(repo: Repository, user_id, event_date: date, slot: str) -> dict:
-    intake = repo.get_menu_intake(event_date, user_id)
+def _mess_lookup(repo: Repository, user_id, event_date: date, slot: str, cache: dict) -> dict:
+    # One page lists up to ~30 meals from the same few menu rows — load
+    # each (large) row once per render, not once per meal.
+    if event_date not in cache:
+        cache[event_date] = repo.get_menu_intake(event_date, user_id)
+    intake = cache[event_date]
     if intake is None:
         return {}
     lookup: dict = {}
@@ -88,7 +102,7 @@ def _mess_lookup(repo: Repository, user_id, event_date: date, slot: str) -> dict
     return lookup
 
 
-def meal_view(repo: Repository, row, timings, now: datetime) -> dict:
+def meal_view(repo: Repository, row, timings, now: datetime, cache: Optional[dict] = None) -> dict:
     window = timings.get(row.meal_slot)
     start = row.scheduled_time or (window[0] if window else None)
     if start is not None:
@@ -98,7 +112,7 @@ def meal_view(repo: Repository, row, timings, now: datetime) -> dict:
     else:
         end_dt = datetime.combine(row.event_date + timedelta(days=1), datetime.min.time(), tzinfo=IST)
         time_label = ""
-    lookup = _mess_lookup(repo, row.user_id, row.event_date, row.meal_slot)
+    lookup = _mess_lookup(repo, row.user_id, row.event_date, row.meal_slot, cache if cache is not None else {})
     top_picks = list(row.top_picks or [])
     return {
         "id": str(row.id),
@@ -124,7 +138,8 @@ def week_meals(repo: Repository, user_id, week_start: date) -> list[dict]:
     now = now_ist()
     dates = [week_start + timedelta(days=i) for i in range(7)]
     rows = [r for r in repo.list_scheduled_meals_for_user(user_id, dates) if r.calendar_event_id]
-    meals = [meal_view(repo, r, timings, now) for r in rows]
+    cache: dict = {}
+    meals = [meal_view(repo, r, timings, now, cache) for r in rows]
     meals.sort(key=lambda m: (m["date"], SLOT_ORDER.index(m["slot"]) if m["slot"] in SLOT_ORDER else 99))
     return meals
 
@@ -135,7 +150,8 @@ def meals_to_rate(repo: Repository, user_id, today: date) -> list[dict]:
     timings = load_mess_timings(FilesystemTool())
     now = now_ist()
     rows = [r for r in repo.list_pending_manual_feedback(user_id, today) if r.top_picks]
-    meals = [meal_view(repo, r, timings, now) for r in rows]
+    cache: dict = {}
+    meals = [meal_view(repo, r, timings, now, cache) for r in rows]
     return [m for m in meals if m["past"]]
 
 

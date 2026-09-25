@@ -39,7 +39,7 @@ def preferences_form(request: Request, user: User = Depends(get_current_user), d
         "user": user,
         "flow": flow,
         "pending": request.query_params.get("pending") or "",
-        "back_url": "/menu/upload?flow=onboarding" if flow == "onboarding" else "/tastes",
+        "back_url": "/onboarding/how" if flow == "onboarding" else "/tastes",
         "categories": CATEGORIES,
         "steps": STEPS,
         "questions": QUESTIONS_BY_ID,
